@@ -1,8 +1,8 @@
-/* ===== Base view: 64x64 tiles, pan/zoom camera, pseudo-3D (60°) rendering ===== */
+/* ===== Base view: 64x64 tiles, 45° rotated camera (isometric-style), pan/zoom ===== */
 
 const BaseView = (() => {
-  const TILE = 18;        // tile width in px at zoom 1
-  const Y_SCALE = 0.5;   // 60-degree camera: vertical axis compressed 2:1
+  const TILE = 18;        // tile edge in px at zoom 1
+  const Y_SCALE = 0.5;   // vertical compression (60-degree tilt)
   let canvas, ctx;
   let cam = { x: 0, y: 0, zoom: 1 };
   let camInit = false;
@@ -36,24 +36,31 @@ const BaseView = (() => {
 
   function centerCamera() {
     const c = Game.BASE_SIZE / 2;
-    cam.zoom = Math.max(0.35, Math.min(1, canvas.width / (Game.BASE_SIZE * TILE * 1.4)));
+    cam.zoom = Math.max(0.25, Math.min(1, canvas.width / (Game.BASE_SIZE * TILE * 1.1)));
     const p = proj(c, c);
     cam.x += canvas.width / 2 - p.x;
     cam.y += canvas.height / 2 - p.y;
   }
 
-  /* ---------- projection (60° look: y axis scaled) ---------- */
+  /* ---------- projection: world rotated 45 degrees, viewed tilted ----------
+     tile (tx, ty) -> screen:
+       sx = cam.x + (tx - ty) * k
+       sy = cam.y + (tx + ty) * k * Y_SCALE
+     where k = TILE * zoom / 2                                             */
+  function k() { return TILE * cam.zoom / 2; }
+
   function proj(tx, ty) {
+    const kk = k();
     return {
-      x: cam.x + tx * TILE * cam.zoom,
-      y: cam.y + ty * TILE * cam.zoom * Y_SCALE,
+      x: cam.x + (tx - ty) * kk,
+      y: cam.y + (tx + ty) * kk * Y_SCALE,
     };
   }
   function unproj(sx, sy) {
-    return {
-      x: (sx - cam.x) / (TILE * cam.zoom),
-      y: (sy - cam.y) / (TILE * cam.zoom * Y_SCALE),
-    };
+    const kk = k();
+    const u = (sx - cam.x) / kk;
+    const v = (sy - cam.y) / (kk * Y_SCALE);
+    return { x: (v + u) / 2, y: (v - u) / 2 };
   }
 
   function base() { return Game.state().bases[Game.state().activeBase]; }
@@ -104,10 +111,11 @@ const BaseView = (() => {
 
   function zoomAt(sx, sy, factor) {
     const before = unproj(sx, sy);
-    cam.zoom = Math.max(0.3, Math.min(2.5, cam.zoom * factor));
-    const after = unproj(sx, sy);
-    cam.x += (after.x - before.x) * TILE * cam.zoom;
-    cam.y += (after.y - before.y) * TILE * cam.zoom * Y_SCALE;
+    cam.zoom = Math.max(0.25, Math.min(2.5, cam.zoom * factor));
+    // keep the world point under the cursor fixed while zooming
+    const fix = proj(before.x, before.y);
+    cam.x += (sx - fix.x);
+    cam.y += (sy - fix.y);
   }
 
   /* ---------- touch interaction (pan + pinch + tap) ---------- */
@@ -304,7 +312,7 @@ const BaseView = (() => {
     return btn;
   }
 
-  /* ---------- drawing ---------- */
+  /* ---------- drawing helpers ---------- */
   function shade(hex, f) {
     const n = parseInt(hex.slice(1), 16);
     const r = Math.max(0, Math.min(255, ((n >> 16) & 255) * f));
@@ -313,13 +321,26 @@ const BaseView = (() => {
     return `rgb(${r | 0},${g | 0},${b2 | 0})`;
   }
 
-  function buildingScreenRect(bld, def) {
-    const p0 = proj(bld.x, bld.y);
-    const p1 = proj(bld.x + def.size.w, bld.y + def.size.h);
+  /* Projected corners of a building footprint, ordered so that
+     [0]=north corner, [1]=east, [2]=south, [3]=west on screen. */
+  function boxCorners(bld, def) {
+    const x = bld.x, y = bld.y, w = def.size.w, h = def.size.h;
     const hpx = def.height * TILE * cam.zoom;
-    return { x: p0.x, y: p0.y - hpx, w: p1.x - p0.x, h: p1.y - p0.y, hpx };
+    const base = [proj(x, y), proj(x + w, y), proj(x + w, y + h), proj(x, y + h)];
+    const top = base.map(p => ({ x: p.x, y: p.y - hpx }));
+    return { base, top, hpx };
   }
 
+  function poly(pts, fill, stroke) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
+  }
+
+  /* ---------- drawing ---------- */
   function draw() {
     if (!ctx) return;
     const st = Game.state();
@@ -332,37 +353,37 @@ const BaseView = (() => {
     ctx.fillStyle = "#2a6ea0";
     ctx.fillRect(0, 0, w, h);
 
-    // island grass (projected square of the whole base)
-    const p00 = proj(0, 0);
-    const p11 = proj(N, N);
-    ctx.fillStyle = "#3e7a3e";
-    ctx.fillRect(p00.x, p00.y, p11.x - p00.x, p11.y - p00.y);
-    // beach edge
-    ctx.strokeStyle = "#c2a878";
+    // island: the rotated square is a diamond on screen
+    const c0 = proj(0, 0), c1 = proj(N, 0), c2 = proj(N, N), c3 = proj(0, N);
+    poly([c0, c1, c2, c3], "#3e7a3e", "#c2a878");
     ctx.lineWidth = 3;
-    ctx.strokeRect(p00.x, p00.y, p11.x - p00.x, p11.y - p00.y);
+    poly([c0, c1, c2, c3], null, "#c2a878");
     ctx.lineWidth = 1;
 
-    // tile grid (only visible range)
+    // tile grid: lines along both axes
     ctx.strokeStyle = "rgba(0,0,0,0.10)";
-    const vis0 = unproj(0, 0), vis1 = unproj(w, h);
-    const tx0 = Math.max(0, Math.floor(vis0.x)), tx1 = Math.min(N, Math.ceil(vis1.x));
-    const ty0 = Math.max(0, Math.floor(vis0.y)), ty1 = Math.min(N, Math.ceil(vis1.y));
-    for (let tx = tx0; tx <= tx1; tx++) {
-      const p = proj(tx, 0);
-      ctx.beginPath(); ctx.moveTo(p.x, p00.y); ctx.lineTo(p.x, p11.y); ctx.stroke();
-    }
-    for (let ty = ty0; ty <= ty1; ty++) {
-      const p = proj(0, ty);
-      ctx.beginPath(); ctx.moveTo(p00.x, p.y); ctx.lineTo(p11.x, p.y); ctx.stroke();
+    const lo = -4, hi = N + 4;
+    for (let i = 0; i <= N; i++) {
+      const a = proj(i, lo), bb = proj(i, hi);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(bb.x, bb.y); ctx.stroke();
+      const c = proj(lo, i), d = proj(hi, i);
+      ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.stroke();
     }
 
-    // buildings, sorted back-to-front
+    // buildings, painter's order: back (small x+y) to front (large x+y)
     const sorted = [...b.buildings].sort((a, c) => {
       const ad = BUILDINGS[a.type], cd = BUILDINGS[c.type];
-      return (a.y + ad.size.h) - (c.y + cd.size.h) || a.x - c.x;
+      return (a.x + a.y + (ad.size.w + ad.size.h) / 2) - (c.x + c.y + (cd.size.w + cd.size.h) / 2);
     });
-    sorted.forEach(bld => drawBuilding(bld, BUILDINGS[bld.type], b));
+    sorted.forEach(bld => drawBuilding(bld, BUILDINGS[bld.type]));
+
+    // hovered tile highlight (diamond outline)
+    if (hover && hover.x >= 0 && hover.y >= 0 && hover.x < N && hover.y < N) {
+      const t0 = proj(hover.x, hover.y), t1 = proj(hover.x + 1, hover.y),
+            t2 = proj(hover.x + 1, hover.y + 1), t3 = proj(hover.x, hover.y + 1);
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      poly([t0, t1, t2, t3], null, "rgba(255,255,255,0.35)");
+    }
 
     // placement ghost
     if (placing && hover) {
@@ -377,10 +398,12 @@ const BaseView = (() => {
     // selected building outline
     if (selected) {
       const def = BUILDINGS[selected.type];
-      const r = buildingScreenRect(selected, def);
+      const { base: bs, top } = boxCorners(selected, def);
       ctx.strokeStyle = "#ffd700";
       ctx.lineWidth = 3;
-      ctx.strokeRect(r.x, r.y, r.w, r.h + r.hpx);
+      poly(top, null, "#ffd700");
+      poly([bs[1], bs[2], top[2], top[1]], null, "#ffd700"); // right wall edge
+      poly([bs[3], bs[2], top[2], top[3]], null, "#ffd700"); // left wall edge
       ctx.lineWidth = 1;
     }
 
@@ -397,63 +420,85 @@ const BaseView = (() => {
     return Object.entries(def.cost).every(([r, a]) => Game.state().resources[r] >= a);
   }
 
-  function drawBuilding(bld, def, base) {
-    const r = buildingScreenRect(bld, def);
+  function drawBuilding(bld, def) {
     const t = Game.now();
     const underConstruction = bld.upgradeEndsAt && bld.upgradeEndsAt > t;
+    const { base: bs, top, hpx } = boxCorners(bld, def);
 
-    // shadow
+    // ground shadow (offset toward south)
     ctx.fillStyle = "rgba(0,0,0,0.18)";
-    ctx.fillRect(r.x + 4, r.y + r.hpx + 4, r.w, r.h);
+    poly([{ x: bs[0].x + 5, y: bs[0].y + 3 }, { x: bs[1].x + 5, y: bs[1].y + 3 },
+          { x: bs[2].x + 5, y: bs[2].y + 3 }, { x: bs[3].x + 5, y: bs[3].y + 3 }], "rgba(0,0,0,0.18)");
 
-    // front wall (darker)
-    ctx.fillStyle = shade(def.color, 0.55);
-    ctx.fillRect(r.x, r.y + r.h, r.w, r.hpx);
+    // left wall (west->south face)
+    ctx.fillStyle = shade(def.color, 0.45);
+    poly([bs[3], bs[2], top[2], top[3]], shade(def.color, 0.45));
 
-    // roof / top face
-    ctx.fillStyle = underConstruction ? shade(def.color, 0.7) : def.color;
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.strokeStyle = "rgba(0,0,0,0.35)";
-    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    // right wall (south->east face)
+    ctx.fillStyle = shade(def.color, 0.65);
+    poly([bs[1], bs[2], top[2], top[1]], shade(def.color, 0.65));
 
-    // icon on the roof
-    ctx.font = `${Math.floor(Math.min(r.w, r.h) * 0.55)}px serif`;
+    // roof
+    const roofColor = underConstruction ? shade(def.color, 0.7) : def.color;
+    poly(top, roofColor, "rgba(0,0,0,0.35)");
+
+    // icon on the roof center
+    const cx = (top[0].x + top[2].x) / 2;
+    const cy = (top[0].y + top[2].y) / 2;
+    const rw = Math.abs(top[1].x - top[3].x);
+    const rh = Math.abs(top[2].y - top[0].y);
+    ctx.font = `${Math.floor(Math.max(10, Math.min(rw, rh * 2) * 0.4))}px serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(def.icon, r.x + r.w / 2, r.y + r.h / 2);
+    ctx.fillText(def.icon, cx, cy);
 
-    // level badge on the wall
-    ctx.font = `bold ${Math.max(9, Math.floor(r.w * 0.16))}px sans-serif`;
-    ctx.fillStyle = "#fff";
-    ctx.fillText(`Lv ${bld.level}`, r.x + r.w / 2, r.y + r.h + r.hpx / 2);
+    // level badge on the right wall
+    if (hpx > 12) {
+      const wx = (bs[1].x + bs[2].x + top[1].x + top[2].x) / 4;
+      const wy = (bs[1].y + bs[2].y + top[1].y + top[2].y) / 4;
+      ctx.font = `bold ${Math.max(9, Math.floor(hpx * 0.35))}px sans-serif`;
+      ctx.fillStyle = "#fff";
+      ctx.fillText(`Lv ${bld.level}`, wx, wy);
+    }
 
-    // construction progress on the wall
+    // construction progress bar on the left wall
     if (underConstruction) {
       const total = Game.buildingTime(bld.type, bld.upgradeTo || bld.level);
       const left = bld.upgradeEndsAt - t;
       const pct = Math.min(100, Math.max(0, ((total - left) / total) * 100));
+      const mx = (bs[3].x + bs[2].x) / 2, my = (bs[3].y + bs[2].y) / 2;
+      const tw = Math.abs(bs[2].x - bs[3].x) * 0.9;
+      const bw = Math.max(20, tw);
       ctx.fillStyle = "#0a141f";
-      ctx.fillRect(r.x, r.y + r.h + r.hpx - 6, r.w, 5);
+      ctx.fillRect(mx - bw / 2, my - 3, bw, 5);
       ctx.fillStyle = "#ffb400";
-      ctx.fillRect(r.x, r.y + r.h + r.hpx - 6, r.w * pct / 100, 5);
+      ctx.fillRect(mx - bw / 2, my - 3, bw * pct / 100, 5);
     }
   }
 
   function drawGhost(bld, def, valid) {
-    const r = buildingScreenRect(bld, def);
-    ctx.globalAlpha = 0.55;
-    ctx.fillStyle = valid ? "#5fff5f" : "#ff5f5f";
-    ctx.fillRect(r.x, r.y + r.h, r.w, r.hpx);     // wall
-    ctx.fillRect(r.x, r.y, r.w, r.h);             // roof
+    const { base: bs, top } = boxCorners(bld, def);
+    const wall = valid ? "rgba(60,220,60,0.5)" : "rgba(220,60,60,0.5)";
+    const roof = valid ? "rgba(95,255,95,0.55)" : "rgba(255,95,95,0.55)";
+    ctx.globalAlpha = 0.8;
+    poly([bs[3], bs[2], top[2], top[3]], wall);
+    poly([bs[1], bs[2], top[2], top[1]], wall);
+    poly(top, roof);
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = valid ? "#2f9f2f" : "#b02020";
+    const stroke = valid ? "#2f9f2f" : "#b02020";
     ctx.lineWidth = 2;
-    ctx.strokeRect(r.x, r.y, r.w, r.h + r.hpx);
+    poly(top, null, stroke);
+    poly([bs[1], bs[2], top[2], top[1]], null, stroke);
+    poly([bs[3], bs[2], top[2], top[3]], null, stroke);
     ctx.lineWidth = 1;
-    ctx.font = `${Math.floor(Math.min(r.w, r.h) * 0.5)}px serif`;
+    const cx = (top[0].x + top[2].x) / 2;
+    const cy = (top[0].y + top[2].y) / 2;
+    const rw = Math.abs(top[1].x - top[3].x);
+    const rh = Math.abs(top[2].y - top[0].y);
+    ctx.font = `${Math.floor(Math.max(10, Math.min(rw, rh * 2) * 0.4))}px serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(def.icon, r.x + r.w / 2, r.y + r.h / 2);
+    ctx.fillText(def.icon, cx, cy);
   }
 
   function islandName(b) {
