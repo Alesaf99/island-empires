@@ -7,8 +7,7 @@ const WORLD = {
 };
 
 /* Fixed island layout.
-   Each island is a rectangle {x, y, w, h} in grid coordinates.
-   Generated once, deterministic (hardcoded). */
+   Each island is a rectangle {x, y, w, h} in grid coordinates. */
 const ISLANDS = [
   { id: 0, name: "Northhelm",    x: 2,  y: 1,  w: 4, h: 3 },
   { id: 1, name: "Ishgard",      x: 9,  y: 1,  w: 4, h: 3 },
@@ -22,9 +21,9 @@ const ISLANDS = [
 ];
 
 /* Buildings the player can construct in their base.
-   cost: resources to build level 1.
-   costScale: each subsequent level multiplies the cost.
-   produce: per-hour production at level 1 (doubled each 2 levels? no - linear with level). */
+   size: footprint in tiles {w, h} on the 64x64 base grid.
+   height: visual height in tiles (pseudo-3D).
+   color: roof color. */
 const BUILDINGS = {
   command_center: {
     name: "Command Center",
@@ -33,10 +32,13 @@ const BUILDINGS = {
     maxLevel: 10,
     cost: { steel: 500, gold: 100 },
     costScale: 1.6,
-    buildTime: 60,        // seconds for level 1
+    buildTime: 60,
     buildTimeScale: 1.7,
     produces: null,
     unique: true,
+    size: { w: 4, h: 4 },
+    height: 0.8,
+    color: "#d9c9a3",
   },
   oil_rig: {
     name: "Oil Rig",
@@ -47,8 +49,11 @@ const BUILDINGS = {
     costScale: 1.5,
     buildTime: 45,
     buildTimeScale: 1.6,
-    produces: { oil: 60 },  // per hour at level 1
+    produces: { oil: 60 },
     unique: false,
+    size: { w: 3, h: 3 },
+    height: 0.5,
+    color: "#8a7a55",
   },
   steel_mill: {
     name: "Steel Mill",
@@ -61,6 +66,9 @@ const BUILDINGS = {
     buildTimeScale: 1.6,
     produces: { steel: 50 },
     unique: false,
+    size: { w: 3, h: 3 },
+    height: 0.6,
+    color: "#7d8a99",
   },
   gold_mine: {
     name: "Gold Mine",
@@ -73,6 +81,9 @@ const BUILDINGS = {
     buildTimeScale: 1.6,
     produces: { gold: 20 },
     unique: false,
+    size: { w: 3, h: 3 },
+    height: 0.5,
+    color: "#c9a84c",
   },
   barracks: {
     name: "Barracks",
@@ -85,6 +96,9 @@ const BUILDINGS = {
     buildTimeScale: 1.7,
     produces: null,
     unique: false,
+    size: { w: 3, h: 3 },
+    height: 0.5,
+    color: "#6b8a4f",
   },
   airfield: {
     name: "Airfield",
@@ -97,6 +111,9 @@ const BUILDINGS = {
     buildTimeScale: 1.7,
     produces: null,
     unique: false,
+    size: { w: 5, h: 4 },
+    height: 0.25,
+    color: "#5f6b7a",
   },
   harbor: {
     name: "Harbor",
@@ -109,6 +126,9 @@ const BUILDINGS = {
     buildTimeScale: 1.7,
     produces: null,
     unique: false,
+    size: { w: 4, h: 4 },
+    height: 0.3,
+    color: "#4f7d99",
   },
   radar_station: {
     name: "Radar Station",
@@ -121,7 +141,10 @@ const BUILDINGS = {
     buildTimeScale: 1.8,
     produces: null,
     unique: false,
-    detection: { base: 0.35, perLevel: 0.12 }, // fraction of travel detected early
+    detection: { base: 0.35, perLevel: 0.12 },
+    size: { w: 2, h: 2 },
+    height: 0.9,
+    color: "#99a3b8",
   },
   market: {
     name: "Market",
@@ -134,8 +157,11 @@ const BUILDINGS = {
     buildTimeScale: 1.6,
     produces: null,
     unique: false,
-    taxBase: 0.10,       // 10% tax at level 1
-    taxPerLevel: 0.015,  // tax reduced per level above 1
+    taxBase: 0.10,
+    taxPerLevel: 0.015,
+    size: { w: 3, h: 3 },
+    height: 0.6,
+    color: "#c98a4f",
   },
   comms_tower: {
     name: "Comms Tower",
@@ -148,6 +174,9 @@ const BUILDINGS = {
     buildTimeScale: 1.6,
     produces: null,
     unique: false,
+    size: { w: 2, h: 2 },
+    height: 1.3,
+    color: "#b8c0c9",
   },
 };
 
