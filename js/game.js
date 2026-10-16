@@ -1,8 +1,9 @@
 /* ===== Core game engine: state, resources, XP, battles, AI ===== */
 
 const Game = (() => {
-  const SAVE_KEY = "island-empires-save-v1";
+  const SAVE_KEY = "island-empires-save-v2";
   const TICK_MS = 1000;
+  const BASE_SIZE = 64;      // base grid is 64x64 tiles
 
   let state = null;
   let listeners = [];
@@ -19,29 +20,30 @@ const Game = (() => {
       xp: 0,
       bases: [makeBase(0, 4, 8, "Home Base")], // start on Ironhold center island
       activeBase: 0,
-      armies: {},              // armyId -> army
-      battles: [],             // resolved battle reports
-      detections: [],          // incoming attack warnings
+      armies: {},
+      battles: [],
+      detections: [],
       market: {
         prices: { ...MARKET_START },
         prev: { ...MARKET_START },
         volume: { oil: 0, steel: 0, gold: 0 },
       },
-      ai: [],                  // AI players
+      ai: [],
       nextArmyId: 1,
       tutorialDone: false,
     };
   }
 
   function makeBase(id, gx, gy, name) {
-    // 6x6 building grid; every base starts with a level-1 Command Center
+    // 64x64 tile base; starts with a Command Center near the center
+    const c = Math.floor(BASE_SIZE / 2) - 2;
     return {
       id, gx, gy, name,
-      grid: [],        // 36 slots: null or { type, level, builtAt }
-      buildings: [{ type: "command_center", level: 1, slot: 14, upgradeEndsAt: 0 }],
+      size: BASE_SIZE,
+      buildings: [{ type: "command_center", level: 1, x: c, y: c, upgradeEndsAt: 0, upgradeTo: 1 }],
       level: 1,
-      army: {},        // unitType -> count (garrison)
-      training: [],    // { unit, count, endsAt }
+      army: {},
+      training: [],
     };
   }
 
@@ -55,7 +57,6 @@ const Game = (() => {
     return !!islandAt(gx, gy);
   }
 
-  /* Distance in grid cells between two points (chebyshev-ish, allows ocean crossing) */
   function distCells(ax, ay, bx, by) {
     const dx = Math.abs(ax - bx), dy = Math.abs(ay - by);
     return Math.max(dx, dy);
@@ -71,13 +72,12 @@ const Game = (() => {
       level: 1 + Math.floor(Math.random() * 3),
       power: 40 + Math.floor(Math.random() * 120),
       aggression: 0.15 + Math.random() * 0.5,
-      nextAttackAt: now() + 600 + Math.random() * 1800, // first raid 10-50 min in
+      nextAttackAt: now() + 600 + Math.random() * 1800,
       ownerName: names[i % names.length],
     };
   }
 
   function initAI() {
-    // Place 8 AI bases on islands, avoiding player start (Ironhold center = island 4)
     const spots = [];
     ISLANDS.forEach((isl, idx) => {
       if (idx === 4) return; // player island
@@ -93,9 +93,20 @@ const Game = (() => {
     state.lastTick = t;
     if (dtHours <= 0) return;
 
-    // production per base
     state.bases.forEach(b => {
       b.buildings.forEach(bld => {
+        // construction / upgrade completion
+        if (bld.upgradeEndsAt && bld.upgradeEndsAt <= t) {
+          if (bld.upgradeTo && bld.upgradeTo > bld.level) {
+            bld.level = bld.upgradeTo;
+            addXP(15 + bld.level * 5);
+            toast(`✅ ${BUILDINGS[bld.type].name} upgraded to level ${bld.level} at ${b.name}.`);
+          } else {
+            toast(`✅ ${BUILDINGS[bld.type].name} completed at ${b.name}.`);
+          }
+          bld.upgradeEndsAt = 0;
+          bld.upgradeTo = bld.level;
+        }
         if (bld.upgradeEndsAt && bld.upgradeEndsAt > t) return; // under construction
         const def = BUILDINGS[bld.type];
         if (def.produces) {
@@ -105,7 +116,6 @@ const Game = (() => {
           }
         }
       });
-      // training completion
       b.training = b.training.filter(tr => {
         if (t >= tr.endsAt) {
           b.army[tr.unit] = (b.army[tr.unit] || 0) + tr.count;
@@ -116,13 +126,8 @@ const Game = (() => {
       });
     });
 
-    // market drift
     Market.tick(dtHours, t);
-
-    // AI behaviour
     aiTick(t);
-
-    // expire old detections (keep 30 min)
     state.detections = state.detections.filter(d => t - d.at < 1800);
 
     emit();
@@ -171,19 +176,40 @@ const Game = (() => {
     return true;
   }
 
+  /* ---------- building footprints ---------- */
+  function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  }
+
+  function canPlace(base, type, x, y) {
+    const def = BUILDINGS[type];
+    if (x < 0 || y < 0 || x + def.size.w > BASE_SIZE || y + def.size.h > BASE_SIZE) return false;
+    return !base.buildings.some(b => {
+      const bd = BUILDINGS[b.type];
+      return rectsOverlap(x, y, def.size.w, def.size.h, b.x, b.y, bd.size.w, bd.size.h);
+    });
+  }
+
+  function buildingAt(base, tx, ty) {
+    return base.buildings.find(b => {
+      const bd = BUILDINGS[b.type];
+      return tx >= b.x && tx < b.x + bd.size.w && ty >= b.y && ty < b.y + bd.size.h;
+    }) || null;
+  }
+
   /* ---------- construction ---------- */
-  function startBuild(baseIdx, type, slot) {
+  function startBuild(baseIdx, type, x, y) {
     const b = state.bases[baseIdx];
     const def = BUILDINGS[type];
-    if (def.unique && b.buildings.some(x => x.type === type)) {
+    if (def.unique && b.buildings.some(x2 => x2.type === type)) {
       toast.error(`You already have a ${def.name}.`, true);
       return false;
     }
-    if (b.buildings.some(x => x.slot === slot)) {
-      toast.error("That slot is occupied.", true);
+    if (!canPlace(b, type, x, y)) {
+      toast.error("Cannot build there — out of bounds or overlapping.", true);
       return false;
     }
-    if (b.buildings.some(x => x.upgradeEndsAt && x.upgradeEndsAt > now())) {
+    if (b.buildings.some(x2 => x2.upgradeEndsAt && x2.upgradeEndsAt > now())) {
       toast.error("Construction crew is busy. One project at a time per base.", true);
       return false;
     }
@@ -192,16 +218,16 @@ const Game = (() => {
       toast.error("Not enough resources.", true);
       return false;
     }
-    const bld = { type, level: 1, slot, upgradeEndsAt: now() + buildingTime(type, 1) };
+    const bld = { type, level: 1, x, y, upgradeEndsAt: now() + buildingTime(type, 1), upgradeTo: 1 };
     b.buildings.push(bld);
     toast(`🏗️ ${def.name} under construction at ${b.name}.`);
     emit(); save();
     return true;
   }
 
-  function upgradeBuild(baseIdx, slot) {
+  function upgradeBuild(baseIdx, x, y) {
     const b = state.bases[baseIdx];
-    const bld = b.buildings.find(x => x.slot === slot);
+    const bld = b.buildings.find(bl => bl.x === x && bl.y === y);
     if (!bld) return false;
     const def = BUILDINGS[bld.type];
     if (bld.level >= def.maxLevel) {
@@ -213,7 +239,7 @@ const Game = (() => {
       toast.error(`Upgrade your Command Center first (needs level ${bld.level + 1}).`, true);
       return false;
     }
-    if (b.buildings.some(x => x.upgradeEndsAt && x.upgradeEndsAt > now())) {
+    if (b.buildings.some(bl => bl.upgradeEndsAt && bl.upgradeEndsAt > now())) {
       toast.error("Construction crew is busy.", true);
       return false;
     }
@@ -222,6 +248,7 @@ const Game = (() => {
       toast.error("Not enough resources.", true);
       return false;
     }
+    bld.upgradeTo = bld.level + 1;
     bld.upgradeEndsAt = now() + buildingTime(bld.type, bld.level + 1);
     toast(`⬆️ Upgrading ${def.name} to level ${bld.level + 1}.`);
     emit(); save();
@@ -275,14 +302,12 @@ const Game = (() => {
       toast.error("No units selected.", true);
       return false;
     }
-    // check availability
     for (const [u, c] of Object.entries(units)) {
       if ((from.army[u] || 0) < c) {
         toast.error(`Not enough ${UNITS[u].name}.`, true);
         return false;
       }
     }
-    // average speed of slowest domain present (ground 3-6, air 20-30, naval 10-12)
     let minSpeed = Infinity;
     for (const [u, c] of Object.entries(units)) {
       if (c > 0) minSpeed = Math.min(minSpeed, UNITS[u].speed);
@@ -303,11 +328,10 @@ const Game = (() => {
       units,
       departedAt: now(),
       arrivesAt: now() + travelHours * 3600,
-      target: targetId,       // ai id or "base:<idx>"
+      target: targetId,
       recalled: false,
     };
 
-    const hrs = Math.round(travelHours * 10) / 10;
     toast(`🚀 Army dispatched. Travel time: ${fmtHours(travelHours)}.`);
     emit(); save();
     return true;
@@ -326,7 +350,7 @@ const Game = (() => {
     army.recalled = true;
     army.returnTo = { ...army.from };
     const elapsed = now() - army.departedAt;
-    army.arrivesAt = now() + Math.max(60, elapsed * 0.8); // returns a bit faster
+    army.arrivesAt = now() + Math.max(60, elapsed * 0.8);
     army.target = null;
     toast("↩️ Army recalled. It is heading home.");
     emit(); save();
@@ -338,10 +362,9 @@ const Game = (() => {
     if (!state.ai) return;
     state.ai.forEach(ai => {
       if (t < ai.nextAttackAt) return;
-      ai.nextAttackAt = t + 900 + Math.random() * 2700; // next raid in 15-60 min
+      ai.nextAttackAt = t + 900 + Math.random() * 2700;
       if (Math.random() > ai.aggression) return;
 
-      // pick a target: player base
       const target = state.bases[Math.floor(Math.random() * state.bases.length)];
       const strength = ai.power * (0.5 + Math.random());
       const units = {};
@@ -367,8 +390,7 @@ const Game = (() => {
         ownerName: ai.name,
       };
 
-      // radar detection: fraction of travel detected early based on radar level
-      let detectionLead = 0.25; // default notice
+      let detectionLead = 0.25;
       state.bases.forEach(b => {
         const radar = b.buildings.find(x => x.type === "radar_station" &&
           !(x.upgradeEndsAt && x.upgradeEndsAt > now()));
@@ -377,7 +399,7 @@ const Game = (() => {
       });
       const detectableAt = t + travelSec * (1 - detectionLead);
       state.detections.push({
-        at: detectableAt,           // when warning appears
+        at: detectableAt,
         arrivesAt: t + travelSec,
         attacker: ai.name,
         from: ai.name + "'s territory",
@@ -398,7 +420,6 @@ const Game = (() => {
 
     if (army.owner === "player") {
       if (army.recalled) {
-        // returned home
         const b = state.bases[army.fromBaseIdx];
         if (b) mergeArmy(b, army.units);
         else state.bases.forEach(x => mergeArmy(x, army.units));
@@ -406,17 +427,14 @@ const Game = (() => {
         return;
       }
       if (typeof army.target === "string" && army.target.startsWith("base:")) {
-        // attack on own base - ignore
         return;
       }
-      // attack AI
       const ai = state.ai.find(a => a.id === army.target);
       if (!ai) return;
       const attackerPower = armyPower(army.units);
       const defenderPower = ai.power * (0.8 + Math.random() * 0.6);
       fightAI(army, ai, attackerPower, defenderPower);
     } else {
-      // AI attacks player base
       const idx = typeof army.target === "string" ? parseInt(army.target.split(":")[1]) : state.activeBase;
       const b = state.bases[idx];
       if (!b) return;
@@ -436,11 +454,10 @@ const Game = (() => {
     return Object.entries(base.army).reduce((s, [u, c]) => s + UNITS[u].power * c, 0);
   }
 
-  /* Simple auto-resolve: power ratio with random variance, loser loses most units */
   function fight(base, enemyArmy, attackerPower, defenderPower) {
     const t = now();
     const atkEff = attackerPower * (0.85 + Math.random() * 0.3);
-    const defEff = defenderPower * (0.85 + Math.random() * 0.3) * 1.15; // defender bonus
+    const defEff = defenderPower * (0.85 + Math.random() * 0.3) * 1.15;
     const playerWon = defEff >= atkEff;
 
     const report = {
@@ -461,7 +478,6 @@ const Game = (() => {
       : `💥 Your base ${base.name} was raided by ${report.attacker}. Losses taken.`,
       !report.playerWon);
 
-    // raiders steal resources if they win
     if (!playerWon) {
       const steal = {};
       for (const r of ["oil", "steel", "gold"]) {
@@ -502,8 +518,7 @@ const Game = (() => {
   function canBuyLand() {
     const lvl = level();
     const owned = state.bases.length;
-    // need level 3 for 2nd base, +2 levels each additional
-    const reqLevel = 1 + (owned) * 2; // 2nd base -> 3, 3rd -> 5, ...
+    const reqLevel = 1 + (owned) * 2;
     return { ok: lvl >= reqLevel, reqLevel, owned };
   }
 
@@ -531,7 +546,7 @@ const Game = (() => {
     const b = makeBase(state.bases.length, gx, gy, `Base ${state.bases.length + 1}`);
     state.bases.push(b);
     addXP(100);
-    toast(`🏝️ New land acquired at (${gx}, ${gy})! Build a Command Center to develop it.`);
+    toast(`🏝️ New land acquired at (${gx}, ${gy})!`);
     emit(); save();
     return true;
   }
@@ -543,15 +558,30 @@ const Game = (() => {
     } catch (e) { /* storage may be unavailable */ }
   }
 
+  /* Migrate old saves (slot-based 6x6 bases) to 64x64 tile coordinates */
+  function migrateBuilding(bld) {
+    if (bld.x !== undefined) return bld;
+    const slot = bld.slot || 0;
+    const gx = (slot % 6) * 10 + 3;
+    const gy = Math.floor(slot / 6) * 10 + 3;
+    delete bld.slot;
+    return { type: bld.type, level: bld.level, x: Math.min(gx, 58), y: Math.min(gy, 58), upgradeEndsAt: bld.upgradeEndsAt || 0, upgradeTo: bld.level || 1 };
+  }
+
   function load() {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
+      // try current format first
+      let raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) raw = localStorage.getItem("island-empires-save-v1");
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.bases) {
-          // migrate: recompute lastTick against now
           state = parsed;
           state.lastTick = parsed.lastTick || now();
+          state.bases.forEach(b => {
+            b.size = BASE_SIZE;
+            b.buildings = b.buildings.map(migrateBuilding);
+          });
           return true;
         }
       }
@@ -586,7 +616,6 @@ const Game = (() => {
     Object.keys(state.armies).forEach(id => {
       if (state.armies[id].arrivesAt <= t) resolveArrival(id);
     });
-    // detections that become visible
     state.detections.forEach(d => {
       if (!d.shown && t >= d.at) {
         d.shown = true;
@@ -609,8 +638,9 @@ const Game = (() => {
     level, addXP, xpProgress,
     islandAt, cellIsLand, distCells, fmtHours,
     buildingCost, buildingTime, canAfford, pay,
+    canPlace, buildingAt,
     startBuild, upgradeBuild, ccOf, canTrain, trainUnits,
     sendArmy, recallArmy, garrisonPower, armyPower,
-    canBuyLand, buyLand, now,
+    canBuyLand, buyLand, now, BASE_SIZE,
   };
 })();
