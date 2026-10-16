@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Island Empires</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Top bar: resources and XP -->
+  <header id="topbar">
+    <div id="player-info">
+      <span id="player-name">Commander</span>
+      <span id="player-level">Level 1</span>
+      <span id="player-xp"></span>
+    </div>
+    <div id="resources">
+      <div class="res oil" title="Oil">🛢 <span id="res-oil">0</span></div>
+      <div class="res steel" title="Steel">🔩 <span id="res-steel">0</span></div>
+      <div class="res gold" title="Gold">💰 <span id="res-gold">0</span></div>
+    </div>
+    <nav id="view-switch">
+      <button id="btn-base" class="active">🏠 Base</button>
+      <button id="btn-map">🗺️ World Map</button>
+    </nav>
+  </header>
+
+  <!-- BASE VIEW -->
+  <main id="base-view" class="view active">
+    <canvas id="base-canvas"></canvas>
+    <div id="base-hud">
+      <div id="construction-queue"></div>
+    </div>
+  </main>
+
+  <!-- WORLD MAP VIEW -->
+  <main id="map-view" class="view">
+    <canvas id="map-canvas"></canvas>
+    <div id="map-hud">
+      <div id="selected-grid-info"></div>
+      <div id="map-actions"></div>
+    </div>
+  </main>
+
+  <!-- Market modal -->
+  <div id="market-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>🌍 Global Market</h2>
+      <p class="hint">Prices move with supply and demand. Sell surplus, buy what you need.</p>
+      <table id="market-table">
+        <thead><tr><th>Resource</th><th>Price</th><th>Trend</th><th>Trade</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <button class="close-btn">Close</button>
+    </div>
+  </div>
+
+  <!-- Building info modal -->
+  <div id="building-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="building-name"></h2>
+      <p id="building-desc"></p>
+      <div id="building-stats"></div>
+      <div id="building-actions"></div>
+      <button class="close-btn">Close</button>
+    </div>
+  </div>
+
+  <!-- New base modal -->
+  <div id="land-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>🏝️ Buy New Land</h2>
+      <p id="land-info"></p>
+      <div id="land-actions"></div>
+      <button class="close-btn">Close</button>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toasts"></div>
+</div>
+<script src="js/data.js"></script>
+<script src="js/market.js"></script>
+<script src="js/game.js"></script>
+<script src="js/base.js"></script>
+<script src="js/map.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
