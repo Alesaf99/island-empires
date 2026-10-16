@@ -1,0 +1,189 @@
+/* ===== Island Empires - base stylesheet ===== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --oil-color: #3b3b3b;
+  --steel-color: #5a6b7a;
+  --gold-color: #b8860b;
+  --bg: #0e1a26;
+  --panel: #16283a;
+  --panel-border: #2e4a66;
+  --accent: #4fc3f7;
+  --text: #e8f0f8;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* Top bar */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--panel);
+  border-bottom: 2px solid var(--panel-border);
+  flex-wrap: wrap;
+  z-index: 10;
+}
+#player-info { display: flex; gap: 8px; align-items: center; font-weight: bold; }
+#player-level {
+  background: var(--accent);
+  color: #062033;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.8em;
+}
+#player-xp { font-size: 0.75em; opacity: 0.8; }
+
+#resources { display: flex; gap: 14px; margin-left: auto; }
+.res { font-weight: bold; white-space: nowrap; }
+.res.oil span { color: #c9b458; }
+.res.steel span { color: #aabdd0; }
+.res.gold span { color: #ffd700; }
+
+#view-switch { display: flex; gap: 6px; }
+#view-switch button {
+  padding: 6px 14px;
+  border: 1px solid var(--panel-border);
+  background: #1d3348;
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95em;
+}
+#view-switch button.active {
+  background: var(--accent);
+  color: #062033;
+  font-weight: bold;
+}
+
+/* Views */
+.view { position: relative; flex: 1; display: none; min-height: 0; }
+.view.active { display: block; }
+canvas { display: block; width: 100%; height: 100%; }
+
+/* HUD panels */
+#base-hud, #map-hud {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  pointer-events: none;
+}
+#base-hud > *, #map-hud > * { pointer-events: auto; }
+
+#construction-queue {
+  background: rgba(22, 40, 58, 0.92);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-height: 44px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  max-width: 60%;
+  flex-wrap: wrap;
+}
+.queue-item { font-size: 0.85em; background: #1d3348; padding: 4px 8px; border-radius: 6px; }
+.queue-item .bar { height: 4px; background: #0a141f; border-radius: 2px; margin-top: 4px; }
+.queue-item .bar .fill { height: 100%; background: var(--accent); border-radius: 2px; }
+
+#selected-grid-info {
+  background: rgba(22, 40, 58, 0.92);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  max-width: 320px;
+}
+#selected-grid-info h3 { margin-bottom: 4px; }
+#selected-grid-info p { font-size: 0.85em; opacity: 0.9; }
+#map-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+
+button.action {
+  padding: 8px 14px;
+  border: 1px solid var(--panel-border);
+  background: #1d3348;
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9em;
+  font-weight: bold;
+}
+button.action:hover { background: #2a4a68; }
+button.action.primary { background: #2e7d32; border-color: #4caf50; }
+button.action.primary:hover { background: #388e3c; }
+button.action.danger { background: #b73a3a; border-color: #d95c5c; }
+button.action.danger:hover { background: #cc4444; }
+button.action:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Modals */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modal.hidden { display: none; }
+.modal-content {
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  max-width: 480px;
+  width: 92%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.modal-content h2 { margin-bottom: 10px; }
+.modal-content .hint { font-size: 0.85em; opacity: 0.75; margin-bottom: 12px; }
+.close-btn { margin-top: 14px; }
+
+#market-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+#market-table th, #market-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--panel-border);
+  text-align: left;
+  font-size: 0.9em;
+}
+.trend-up { color: #7fd67f; }
+.trend-down { color: #e57373; }
+
+#building-stats { margin: 10px 0; font-size: 0.9em; }
+#building-stats div { padding: 3px 0; border-bottom: 1px dashed #2a3f55; }
+#building-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+/* Toasts */
+#toasts {
+  position: fixed;
+  top: 64px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+}
+.toast {
+  background: #14304a;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.9em;
+  animation: fadein 0.25s ease;
+  max-width: 300px;
+}
+.toast.error { border-color: #e57373; background: #4a1f1f; }
+@keyframes fadein { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; } }
