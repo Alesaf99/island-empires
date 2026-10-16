@@ -219,10 +219,10 @@ const BaseView = (() => {
         btn.onclick = () => { closeModal("building-modal"); Market.open(); };
         actions.appendChild(btn);
       }
-      if (bld.type === "barracks" || bld.type === "airfield" || bld.type === "harbor") {
+      if (["barracks", "factory", "heavy_factory", "airfield", "harbor"].includes(bld.type)) {
         const btn = document.createElement("button");
         btn.className = "action primary";
-        btn.textContent = "🎖️ Train Units";
+        btn.textContent = "🎖️ Train / Build Units";
         btn.onclick = () => { closeModal("building-modal"); showTrainModal(bld.type); };
         actions.appendChild(btn);
       }
@@ -268,16 +268,29 @@ const BaseView = (() => {
   /* ---------- training modal ---------- */
   function showTrainModal(bldType) {
     const b = base();
-    const domainMap = { barracks: "ground", airfield: "air", harbor: "naval" };
-    const domain = domainMap[bldType];
+    // which unit classes each production building trains
+    const buildingClasses = {
+      barracks: ["infantry"],
+      factory: ["ground_veh"],
+      heavy_factory: ["ground_veh"],
+      airfield: ["jet", "bomber", "heli", "transport_heli"],
+      harbor: ["ship", "submarine", "carrier", "transport_ship"],
+    };
+    const classes = buildingClasses[bldType] || [];
     document.getElementById("building-name").textContent = `🎖️ Train Units — ${BUILDINGS[bldType].name}`;
-    document.getElementById("building-desc").textContent = "Your garrison defends the base automatically.";
+    document.getElementById("building-desc").textContent = "Your garrison defends the base automatically. Damage types: inf (infantry), gveh (ground vehicles), air (jets/bombers/helis), sea (ships), sub (submarines).";
     const stats = document.getElementById("building-stats");
     stats.innerHTML = "";
     Object.entries(UNITS).forEach(([key, u]) => {
-      if (u.domain !== domain) return;
+      if (!classes.includes(u.cls)) return;
+      if (bldType === "heavy_factory" && u.price < 3000) return; // heavy factory: tanks only
+      if (bldType === "factory" && u.price >= 3000) return;     // factory: IFVs only
+      const dmgDesc = Object.entries(u.dmg || {}).map(([t, d]) => `${t}: ${d}`).join(", ") || "—";
+      const stealthTag = u.stealth ? " | 🥷 stealth" : "";
+      const transportTag = u.capacity ? ` | carries ${u.capacity}` : u.jetCapacity ? ` | ${u.jetCapacity} jets + 10 helis` : "";
+      const reqStr = Object.entries(u.requires).map(([t, l]) => `${BUILDINGS[t].name} lvl ${l}`).join(", ");
       const row = document.createElement("div");
-      row.innerHTML = `${u.icon} <b>${u.name}</b> — power ${u.power}, speed ${u.speed}/h — cost ${Object.entries(u.cost).map(([r, a]) => `${a} ${r}`).join(", ")} — <span id="train-count-${key}">0</span> owned`;
+      row.innerHTML = `${u.icon} <b>${u.name}</b> — HP ${u.hp}, dmg ${dmgDesc}, speed ${u.speed}/h — ${u.price} gold${stealthTag}${transportTag} <small>(${reqStr})</small> — <span id="train-count-${key}">0</span> owned`;
       const controls = document.createElement("div");
       controls.style.cssText = "display:flex;gap:6px;align-items:center;margin:4px 0 8px 0;";
       const minus = mkBtn("−", () => adjustTrain(key, -1));
@@ -381,7 +394,6 @@ const BaseView = (() => {
     if (hover && hover.x >= 0 && hover.y >= 0 && hover.x < N && hover.y < N) {
       const t0 = proj(hover.x, hover.y), t1 = proj(hover.x + 1, hover.y),
             t2 = proj(hover.x + 1, hover.y + 1), t3 = proj(hover.x, hover.y + 1);
-      ctx.strokeStyle = "rgba(255,255,255,0.35)";
       poly([t0, t1, t2, t3], null, "rgba(255,255,255,0.35)");
     }
 
@@ -426,16 +438,13 @@ const BaseView = (() => {
     const { base: bs, top, hpx } = boxCorners(bld, def);
 
     // ground shadow (offset toward south)
-    ctx.fillStyle = "rgba(0,0,0,0.18)";
     poly([{ x: bs[0].x + 5, y: bs[0].y + 3 }, { x: bs[1].x + 5, y: bs[1].y + 3 },
           { x: bs[2].x + 5, y: bs[2].y + 3 }, { x: bs[3].x + 5, y: bs[3].y + 3 }], "rgba(0,0,0,0.18)");
 
     // left wall (west->south face)
-    ctx.fillStyle = shade(def.color, 0.45);
     poly([bs[3], bs[2], top[2], top[3]], shade(def.color, 0.45));
 
     // right wall (south->east face)
-    ctx.fillStyle = shade(def.color, 0.65);
     poly([bs[1], bs[2], top[2], top[1]], shade(def.color, 0.65));
 
     // roof
