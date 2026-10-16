@@ -1,14 +1,13 @@
-/* ===== Core game engine: state, resources, XP, battles, AI ===== */
+/* ===== Core game engine: state, resources, XP, class-based battles, AI ===== */
 
 const Game = (() => {
-  const SAVE_KEY = "island-empires-save-v2";
+  const SAVE_KEY = "island-empires-save-v3";
   const TICK_MS = 1000;
-  const BASE_SIZE = 64;      // base grid is 64x64 tiles
+  const BASE_SIZE = 64;
 
   let state = null;
   let listeners = [];
 
-  /* ---------- helpers ---------- */
   const now = () => Date.now() / 1000;
 
   function defaultState() {
@@ -18,7 +17,7 @@ const Game = (() => {
       lastTick: now(),
       resources: { oil: 400, steel: 600, gold: 150 },
       xp: 0,
-      bases: [makeBase(0, 4, 8, "Home Base")], // start on Ironhold center island
+      bases: [makeBase(0, 4, 8, "Home Base")],
       activeBase: 0,
       armies: {},
       battles: [],
@@ -35,7 +34,6 @@ const Game = (() => {
   }
 
   function makeBase(id, gx, gy, name) {
-    // 64x64 tile base; starts with a Command Center near the center
     const c = Math.floor(BASE_SIZE / 2) - 2;
     return {
       id, gx, gy, name,
@@ -56,7 +54,6 @@ const Game = (() => {
     if (gx < 0 || gy < 0 || gx >= WORLD.GRID_W || gy >= WORLD.GRID_H) return false;
     return !!islandAt(gx, gy);
   }
-
   function distCells(ax, ay, bx, by) {
     const dx = Math.abs(ax - bx), dy = Math.abs(ay - by);
     return Math.max(dx, dy);
@@ -70,7 +67,7 @@ const Game = (() => {
       name: names[i % names.length],
       gx, gy,
       level: 1 + Math.floor(Math.random() * 3),
-      power: 40 + Math.floor(Math.random() * 120),
+      power: 300 + Math.floor(Math.random() * 900),
       aggression: 0.15 + Math.random() * 0.5,
       nextAttackAt: now() + 600 + Math.random() * 1800,
       ownerName: names[i % names.length],
@@ -80,7 +77,7 @@ const Game = (() => {
   function initAI() {
     const spots = [];
     ISLANDS.forEach((isl, idx) => {
-      if (idx === 4) return; // player island
+      if (idx === 4) return;
       spots.push({ x: isl.x + Math.floor(isl.w / 2), y: isl.y + Math.floor(isl.h / 2), idx });
     });
     state.ai = spots.map((s, i) => makeAI(i, s.x, s.y));
@@ -95,7 +92,6 @@ const Game = (() => {
 
     state.bases.forEach(b => {
       b.buildings.forEach(bld => {
-        // construction / upgrade completion
         if (bld.upgradeEndsAt && bld.upgradeEndsAt <= t) {
           if (bld.upgradeTo && bld.upgradeTo > bld.level) {
             bld.level = bld.upgradeTo;
@@ -107,19 +103,18 @@ const Game = (() => {
           bld.upgradeEndsAt = 0;
           bld.upgradeTo = bld.level;
         }
-        if (bld.upgradeEndsAt && bld.upgradeEndsAt > t) return; // under construction
+        if (bld.upgradeEndsAt && bld.upgradeEndsAt > t) return;
         const def = BUILDINGS[bld.type];
         if (def.produces) {
-          const mult = bld.level;
           for (const [res, amt] of Object.entries(def.produces)) {
-            state.resources[res] += amt * mult * dtHours;
+            state.resources[res] += amt * bld.level * dtHours;
           }
         }
       });
       b.training = b.training.filter(tr => {
         if (t >= tr.endsAt) {
           b.army[tr.unit] = (b.army[tr.unit] || 0) + tr.count;
-          toast(`✅ ${tr.count} × ${UNITS[tr.unit].name} finished training at ${b.name}.`);
+          toast(`✅ ${tr.count} × ${UNITS[tr.unit].name} ready at ${b.name}.`);
           return false;
         }
         return true;
@@ -180,7 +175,6 @@ const Game = (() => {
   function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
   }
-
   function canPlace(base, type, x, y) {
     const def = BUILDINGS[type];
     if (x < 0 || y < 0 || x + def.size.w > BASE_SIZE || y + def.size.h > BASE_SIZE) return false;
@@ -189,7 +183,6 @@ const Game = (() => {
       return rectsOverlap(x, y, def.size.w, def.size.h, b.x, b.y, bd.size.w, bd.size.h);
     });
   }
-
   function buildingAt(base, tx, ty) {
     return base.buildings.find(b => {
       const bd = BUILDINGS[b.type];
@@ -218,8 +211,7 @@ const Game = (() => {
       toast.error("Not enough resources.", true);
       return false;
     }
-    const bld = { type, level: 1, x, y, upgradeEndsAt: now() + buildingTime(type, 1), upgradeTo: 1 };
-    b.buildings.push(bld);
+    b.buildings.push({ type, level: 1, x, y, upgradeEndsAt: now() + buildingTime(type, 1), upgradeTo: 1 });
     toast(`🏗️ ${def.name} under construction at ${b.name}.`);
     emit(); save();
     return true;
@@ -278,16 +270,41 @@ const Game = (() => {
       toast.error(`Requires ${Object.entries(def.requires).map(([t, l]) => `${BUILDINGS[t].name} lvl ${l}`).join(", ")}.`, true);
       return false;
     }
-    const cost = {};
-    for (const [r, a] of Object.entries(def.cost)) cost[r] = a * count;
-    if (!pay(cost)) {
-      toast.error("Not enough resources.", true);
+    if (state.resources.gold < def.price * count) {
+      toast.error(`Not enough gold (${def.price * count} needed).`, true);
       return false;
     }
+    state.resources.gold -= def.price * count;
     b.training.push({ unit: unitType, count, endsAt: now() + def.trainTime * count });
     toast(`🎖️ Training ${count} × ${def.name}.`);
     emit(); save();
     return true;
+  }
+
+  /* ---------- unit class helpers ---------- */
+  const CLASS_KEY = {
+    infantry: "inf", ground_veh: "gveh", jet: "air", bomber: "air",
+    heli: "air", transport_heli: "air", ship: "sea", carrier: "sea",
+    transport_ship: "sea", submarine: "sub",
+  };
+  function classOf(unitKey) { return CLASS_KEY[UNITS[unitKey].cls]; }
+
+  function isTransport(u) { return (u.capacity || 0) > 0 || (u.jetCapacity || 0) > 0; }
+  function isCarrier(u) { return (u.jetCapacity || 0) > 0; }
+
+  /* Cargo slots: infantry = 1 slot, ground vehicle = 4 slots */
+  function cargoSlots(units) {
+    let slots = 0;
+    for (const [k, c] of Object.entries(units)) {
+      if (UNITS[k].cls === "infantry") slots += c;
+      else if (UNITS[k].cls === "ground_veh") slots += c * 4;
+    }
+    return slots;
+  }
+  function transportCapacity(units) {
+    let cap = 0;
+    for (const [k, c] of Object.entries(units)) cap += (UNITS[k].capacity || 0) * c;
+    return cap;
   }
 
   /* ---------- armies & movement ---------- */
@@ -308,13 +325,28 @@ const Game = (() => {
         return false;
       }
     }
+
+    // cross-water rule: ground units need transports when crossing the ocean
+    const fromIsland = islandAt(from.gx, from.gy);
+    const toIsland = islandAt(toGx, toGy);
+    const crossesWater = !fromIsland || !toIsland || fromIsland.id !== toIsland.id;
+
+    const slotsNeeded = cargoSlots(units);
+    const slotsAvail = transportCapacity(units);
+    if (crossesWater && slotsNeeded > slotsAvail) {
+      toast.error(`Ground units need transports to cross water (need ${slotsNeeded} cargo slots, have ${slotsAvail}).`, true);
+      return false;
+    }
+
+    // army speed = slowest unit (loaded cargo rides with its transports)
     let minSpeed = Infinity;
     for (const [u, c] of Object.entries(units)) {
       if (c > 0) minSpeed = Math.min(minSpeed, UNITS[u].speed);
     }
+
     const a = baseCenter(from);
     const dist = distCells(a.x, a.y, toGx + 0.5, toGy + 0.5);
-    const travelHours = dist / minSpeed;
+    const travelHours = Math.max(0.05, dist / minSpeed);
     const armyId = state.nextArmyId++;
 
     for (const [u, c] of Object.entries(units)) from.army[u] -= c;
@@ -332,7 +364,7 @@ const Game = (() => {
       recalled: false,
     };
 
-    toast(`🚀 Army dispatched. Travel time: ${fmtHours(travelHours)}.`);
+    toast(`🚀 Army dispatched (${total} units). Travel time: ${fmtHours(travelHours)}.`);
     emit(); save();
     return true;
   }
@@ -348,7 +380,6 @@ const Game = (() => {
     }
     if (army.recalled) return false;
     army.recalled = true;
-    army.returnTo = { ...army.from };
     const elapsed = now() - army.departedAt;
     army.arrivesAt = now() + Math.max(60, elapsed * 0.8);
     army.target = null;
@@ -368,15 +399,18 @@ const Game = (() => {
       const target = state.bases[Math.floor(Math.random() * state.bases.length)];
       const strength = ai.power * (0.5 + Math.random());
       const units = {};
-      if (strength > 150) units.tank = Math.floor(strength / 60);
-      else if (strength > 60) units.ifv = Math.floor(strength / 25);
-      else units.infantry = Math.floor(strength / 5);
+      if (strength > 2000) { units.abrams = Math.max(1, Math.floor(strength / 4000)); units.at_soldier = Math.floor(strength / 500); }
+      else if (strength > 800) { units.btr90 = Math.max(1, Math.floor(strength / 1900)); units.soldier = Math.floor(strength / 150); }
+      else { units.soldier = Math.max(1, Math.floor(strength / 150)); units.at_soldier = Math.floor(strength / 250); }
+      if (strength > 4000) units.hind = Math.floor(strength / 13000);
+      if (strength > 8000) units.mig29 = Math.floor(strength / 19000);
 
       const from = { x: ai.gx + 0.5, y: ai.gy + 0.5 };
       const tc = baseCenter(target);
       const dist = distCells(from.x, from.y, tc.x, tc.y);
-      const speed = units.tank ? 4 : units.ifv ? 6 : 3;
-      const travelSec = dist / speed * 3600;
+      let minSpeed = Infinity;
+      for (const k of Object.keys(units)) minSpeed = Math.min(minSpeed, UNITS[k].speed);
+      const travelSec = dist / minSpeed * 3600;
 
       const armyId = state.nextArmyId++;
       state.armies[armyId] = {
@@ -396,23 +430,183 @@ const Game = (() => {
           !(x.upgradeEndsAt && x.upgradeEndsAt > now()));
         if (radar) detectionLead = Math.max(detectionLead,
           BUILDINGS.radar_station.detection.base + BUILDINGS.radar_station.detection.perLevel * (radar.level - 1));
+        // SIGINT aircraft add early warning
+        const sigint = b.buildings.some(x => x.type === "airfield" && x.level >= 3) &&
+          Object.keys(b.army).some(k => UNITS[k].sigint);
+        if (sigint) detectionLead = Math.max(detectionLead, 0.6);
       });
       const detectableAt = t + travelSec * (1 - detectionLead);
       state.detections.push({
         at: detectableAt,
         arrivesAt: t + travelSec,
         attacker: ai.name,
-        from: ai.name + "'s territory",
-        strength: Math.round(Object.entries(units).reduce((s, [u, c]) => s + UNITS[u].power * c, 0)),
+        strength: Math.round(estimatePower(units)),
       });
     });
   }
 
-  /* ---------- battle resolution ---------- */
-  function armyPower(units) {
-    return Object.entries(units).reduce((s, [u, c]) => s + UNITS[u].power * c, 0);
+  /* Rough power estimate for display */
+  function estimatePower(units) {
+    return Object.entries(units).reduce((s, [u, c]) => {
+      const d = UNITS[u].dmg || {};
+      const best = Math.max(0, ...Object.values(d));
+      return s + best * c;
+    }, 0);
   }
 
+  /* ---------- battle engine (class-based, rounds) ----------
+     Rules implemented:
+     - ground can't hit sea/sub; ships can't hit ground; jets only hit air;
+       bombers can't hit jets; air-vs-ship damage ×0.7; stealth takes 50% less
+     - transports destroyed -> their cargo is destroyed            */
+  function dmgOf(unitKey, targetClass) {
+    const def = UNITS[unitKey];
+    let base = (def.dmg || {})[targetClass] || 0;
+    // bombers hit ships with their general bomb load at 70%
+    if (base === 0 && targetClass === "sea" && def.seaCapable) {
+      base = ((def.dmg || {}).gveh || 0) * 0.7;
+    }
+    if (base > 0 && targetClass === "sea" && def.seaCapable) base *= 0.7;
+    return base;
+  }
+
+  function armyPools(units) {
+    const pools = {};
+    for (const [k, c] of Object.entries(units)) {
+      if (c > 0) pools[k] = { count: c, hp: UNITS[k].hp * c, def: UNITS[k] };
+    }
+    return pools;
+  }
+
+  function totalDamage(units, targetClass, pools) {
+    let dmg = 0;
+    for (const [k, c] of Object.entries(units)) {
+      const alive = pools[k] ? pools[k].count : 0;
+      if (alive > 0) dmg += dmgOf(k, targetClass) * alive;
+    }
+    return dmg;
+  }
+
+  function applyDamage(pools, targetClass, dmg) {
+    const inClass = Object.keys(pools).filter(k => classOf(k) === targetClass && pools[k].count > 0);
+    if (!inClass.length || dmg <= 0) return 0;
+    const totalHp = inClass.reduce((s, k) => s + pools[k].hp, 0);
+    for (const k of inClass) {
+      const share = dmg * (pools[k].hp / totalHp);
+      const u = pools[k];
+      u.hp -= share;
+      const dead = Math.max(0, Math.floor((u.def.hp * u.count - u.hp) / u.def.hp));
+      u.count = Math.max(0, u.count - dead);
+      u.hp = Math.min(u.hp, u.def.hp * u.count);
+    }
+    return dmg;
+  }
+
+  function poolsToUnits(pools) {
+    const out = {};
+    for (const [k, p] of Object.entries(pools)) {
+      if (p.count > 0) out[k] = p.count;
+    }
+    return out;
+  }
+
+  function simulateBattle(atkUnits, defUnits) {
+    const atkP = armyPools(atkUnits);
+    const defP = armyPools(defUnits);
+    const classes = ["inf", "gveh", "air", "sea", "sub"];
+    let rounds = 0;
+
+    while (rounds < 50) {
+      rounds++;
+      const atkShots = {}, defShots = {};
+      for (const cls of classes) {
+        atkShots[cls] = totalDamage(atkUnits, cls, atkP);
+        defShots[cls] = totalDamage(defUnits, cls, defP);
+      }
+      for (const cls of classes) {
+        if (atkShots[cls] > 0) applyDamage(defP, cls, atkShots[cls] * stealthFactor(defP, cls));
+        if (defShots[cls] > 0) applyDamage(atkP, cls, defShots[cls] * stealthFactor(atkP, cls));
+      }
+      const atkAlive = Object.values(atkP).some(p => p.count > 0);
+      const defAlive = Object.values(defP).some(p => p.count > 0);
+      if (!atkAlive || !defAlive) break;
+    }
+
+    return { atk: poolsToUnits(atkP), def: poolsToUnits(defP), rounds };
+  }
+
+  /* average damage reduction from stealth units within a class */
+  function stealthFactor(pools, cls) {
+    const inClass = Object.keys(pools).filter(k => classOf(k) === cls && pools[k].count > 0);
+    if (!inClass.length) return 1;
+    const totalHp = inClass.reduce((s, k) => s + pools[k].hp, 0);
+    let weighted = 0;
+    for (const k of inClass) {
+      const f = pools[k].def.stealth ? 0.5 : 1;
+      weighted += f * pools[k].hp;
+    }
+    return weighted / totalHp;
+  }
+
+  /* If transports died, destroy cargo that no longer fits */
+  function enforceCargo(unitsBefore, unitsAfter) {
+    const capBefore = transportCapacity(unitsBefore);
+    const capAfter = transportCapacity(unitsAfter);
+    if (capAfter >= capBefore) return unitsAfter;
+    const slots = cargoSlots(unitsAfter);
+    const overflow = slots - capAfter;
+    if (overflow <= 0) return unitsAfter;
+    const out = { ...unitsAfter };
+    let toKill = overflow;
+    for (const k of Object.keys(out)) {
+      if (toKill <= 0) break;
+      if (UNITS[k].cls === "infantry") {
+        const kill = Math.min(out[k], toKill);
+        out[k] -= kill; toKill -= kill;
+      }
+    }
+    for (const k of Object.keys(out)) {
+      if (toKill <= 0) break;
+      if (UNITS[k].cls === "ground_veh") {
+        const killVeh = Math.min(out[k], Math.ceil(toKill / 4));
+        out[k] -= killVeh; toKill -= killVeh * 4;
+      }
+    }
+    for (const k of Object.keys(out)) if (out[k] <= 0) delete out[k];
+    return out;
+  }
+
+  /* If carriers died, destroy their loaded aircraft */
+  function enforceCarrierLoad(unitsBefore, unitsAfter) {
+    const carriersBefore = Object.entries(unitsBefore)
+      .filter(([k]) => isCarrier(UNITS[k])).reduce((s, [k, c]) => s + c, 0);
+    const carriersAfter = Object.entries(unitsAfter)
+      .filter(([k]) => isCarrier(UNITS[k])).reduce((s, [k, c]) => s + c, 0);
+    if (carriersAfter >= carriersBefore || carriersBefore === 0) return unitsAfter;
+
+    let jetCapBefore = 0, heliCapBefore = 0;
+    for (const [k, c] of Object.entries(unitsBefore)) {
+      if (isCarrier(UNITS[k])) { jetCapBefore += UNITS[k].jetCapacity * c; heliCapBefore += 10 * c; }
+    }
+    let jetCapAfter = 0, heliCapAfter = 0;
+    for (const [k, c] of Object.entries(unitsAfter)) {
+      if (isCarrier(UNITS[k])) { jetCapAfter += UNITS[k].jetCapacity * c; heliCapAfter += 10 * c; }
+    }
+    const out = { ...unitsAfter };
+    const jetLoss = (jetCapBefore - jetCapAfter) / Math.max(1, jetCapBefore);
+    const heliLoss = (heliCapBefore - heliCapAfter) / Math.max(1, heliCapBefore);
+    for (const [k, c] of Object.entries(out)) {
+      if (UNITS[k].carrierCapable) {
+        out[k] = Math.max(0, Math.floor(c * (1 - jetLoss)));
+      } else if (UNITS[k].cls === "heli" || UNITS[k].cls === "transport_heli") {
+        out[k] = Math.max(0, Math.floor(c * (1 - heliLoss)));
+      }
+    }
+    for (const k of Object.keys(out)) if (out[k] <= 0) delete out[k];
+    return out;
+  }
+
+  /* ---------- battle resolution ---------- */
   function resolveArrival(armyId) {
     const army = state.armies[armyId];
     if (!army) return;
@@ -424,26 +618,84 @@ const Game = (() => {
         if (b) mergeArmy(b, army.units);
         else state.bases.forEach(x => mergeArmy(x, army.units));
         toast("↩️ Your army has returned home.");
+        emit(); save();
         return;
       }
-      if (typeof army.target === "string" && army.target.startsWith("base:")) {
-        return;
-      }
+      if (typeof army.target === "string" && army.target.startsWith("base:")) return;
       const ai = state.ai.find(a => a.id === army.target);
       if (!ai) return;
-      const attackerPower = armyPower(army.units);
-      const defenderPower = ai.power * (0.8 + Math.random() * 0.6);
-      fightAI(army, ai, attackerPower, defenderPower);
+
+      // AI defense garrison
+      const defUnits = aiGarrison(ai);
+      const res = simulateBattle(army.units, defUnits);
+      const survivors = enforceCarrierLoad(army.units, enforceCargo(army.units, res.atk));
+
+      const attackerWon = Object.keys(survivors).length > 0 && !Object.keys(res.def).length;
+      if (attackerWon) {
+        ai.power = Math.max(100, ai.power * 0.6);
+        const loot = {};
+        for (const r of ["oil", "steel", "gold"]) {
+          loot[r] = 200 + Math.floor(Math.random() * 600);
+          state.resources[r] += loot[r];
+        }
+        addXP(40 + Math.round(estimatePower(defUnits) / 100));
+        const b = state.bases[army.fromBaseIdx];
+        if (b) mergeArmy(b, survivors);
+        toast(`⚔️ Victory! You defeated ${ai.name}'s garrison and looted resources.`);
+      } else {
+        if (Object.keys(survivors).length > 0) {
+          const b = state.bases[army.fromBaseIdx];
+          if (b) mergeArmy(b, survivors);
+          toast(`⚔️ Your attack on ${ai.name} was repelled. ${Object.values(survivors).reduce((a, c) => a + c, 0)} survivors limped home.`, true);
+        } else {
+          toast(`⚔️ Your attack on ${ai.name} was repelled. Army lost.`, true);
+        }
+      }
+      emit(); save();
     } else {
+      // AI attacks player base
       const idx = typeof army.target === "string" ? parseInt(army.target.split(":")[1]) : state.activeBase;
       const b = state.bases[idx];
       if (!b) return;
-      const defender = garrisonPower(b);
-      const attacker = armyPower(army.units);
-      const report = fight(b, army, attacker, defender);
-      state.battles.unshift(report);
+
+      const garrison = { ...b.army };
+      const res = simulateBattle(army.units, garrison);
+      const garrisonAfter = enforceCarrierLoad(garrison, enforceCargo(garrison, res.def));
+      const raidersAfter = enforceCargo(army.units, res.atk);
+      const playerWon = Object.keys(raidersAfter).length === 0;
+
+      b.army = garrisonAfter;
+      if (playerWon) {
+        addXP(30 + Math.round(estimatePower(army.units) / 100));
+        toast(`🛡️ Your base ${b.name} repelled ${army.ownerName}!`);
+      } else {
+        const steal = {};
+        for (const r of ["oil", "steel", "gold"]) {
+          const amt = Math.floor(state.resources[r] * 0.1);
+          state.resources[r] -= amt;
+          steal[r] = amt;
+        }
+        toast(`💥 ${b.name} was raided by ${army.ownerName}. 10% of each resource stolen.`, true);
+      }
+      state.battles.unshift({
+        at: now(),
+        attacker: army.ownerName,
+        defender: b.name,
+        playerWon,
+      });
       state.battles = state.battles.slice(0, 20);
+      emit(); save();
     }
+  }
+
+  function aiGarrison(ai) {
+    const g = {};
+    g.soldier = Math.max(2, Math.floor(ai.power / 150));
+    g.at_soldier = Math.max(1, Math.floor(ai.power / 500));
+    if (ai.power > 800) g.btr90 = Math.floor(ai.power / 1900);
+    if (ai.power > 2000) g.abrams = Math.floor(ai.power / 4000);
+    if (ai.power > 3000) g.aa_soldier = Math.floor(ai.power / 600);
+    return g;
   }
 
   function mergeArmy(base, units) {
@@ -451,67 +703,10 @@ const Game = (() => {
   }
 
   function garrisonPower(base) {
-    return Object.entries(base.army).reduce((s, [u, c]) => s + UNITS[u].power * c, 0);
+    return estimatePower(base.army);
   }
-
-  function fight(base, enemyArmy, attackerPower, defenderPower) {
-    const t = now();
-    const atkEff = attackerPower * (0.85 + Math.random() * 0.3);
-    const defEff = defenderPower * (0.85 + Math.random() * 0.3) * 1.15;
-    const playerWon = defEff >= atkEff;
-
-    const report = {
-      at: t,
-      attacker: enemyArmy.ownerName || "Enemy",
-      defender: base.name,
-      playerWon,
-      attackerLossPct: playerWon ? 1 : 0.4 + Math.random() * 0.3,
-      defenderLossPct: playerWon ? Math.min(0.9, atkEff / defEff * 0.5) : 0.7 + Math.random() * 0.3,
-      loot: null,
-    };
-
-    applyLosses(base.army, report.defenderLossPct);
-    if (playerWon) addXP(30 + Math.round(attackerPower / 10));
-
-    toast(report.playerWon
-      ? `🛡️ Your base ${base.name} repelled an attack from ${report.attacker}!`
-      : `💥 Your base ${base.name} was raided by ${report.attacker}. Losses taken.`,
-      !report.playerWon);
-
-    if (!playerWon) {
-      const steal = {};
-      for (const r of ["oil", "steel", "gold"]) {
-        const amt = Math.floor(state.resources[r] * 0.1);
-        state.resources[r] -= amt;
-        steal[r] = amt;
-      }
-      report.loot = steal;
-    }
-    return report;
-  }
-
-  function fightAI(army, ai, attackerPower, defenderPower) {
-    const won = attackerPower * (0.85 + Math.random() * 0.3) >= defenderPower * (0.85 + Math.random() * 0.3);
-    if (won) {
-      ai.power = Math.max(10, ai.power * 0.5);
-      const loot = {};
-      for (const r of ["oil", "steel", "gold"]) {
-        loot[r] = 50 + Math.floor(Math.random() * 150);
-        state.resources[r] += loot[r];
-      }
-      addXP(40 + Math.round(defenderPower / 8));
-      toast(`⚔️ Victory! You raided ${ai.name} and looted oil, steel and gold.`);
-    } else {
-      toast(`⚔️ Your attack on ${ai.name} was repelled. Army lost.`, true);
-    }
-    emit(); save();
-  }
-
-  function applyLosses(armyObj, pct) {
-    for (const u of Object.keys(armyObj)) {
-      armyObj[u] = Math.max(0, Math.floor(armyObj[u] * (1 - pct)));
-      if (armyObj[u] === 0) delete armyObj[u];
-    }
+  function armyPower(units) {
+    return estimatePower(units);
   }
 
   /* ---------- land purchase ---------- */
@@ -558,34 +753,25 @@ const Game = (() => {
     } catch (e) { /* storage may be unavailable */ }
   }
 
-  /* Migrate old saves (slot-based 6x6 bases) to 64x64 tile coordinates */
-  function migrateBuilding(bld) {
-    if (bld.x !== undefined) return bld;
-    const slot = bld.slot || 0;
-    const gx = (slot % 6) * 10 + 3;
-    const gy = Math.floor(slot / 6) * 10 + 3;
-    delete bld.slot;
-    return { type: bld.type, level: bld.level, x: Math.min(gx, 58), y: Math.min(gy, 58), upgradeEndsAt: bld.upgradeEndsAt || 0, upgradeTo: bld.level || 1 };
-  }
-
   function load() {
     try {
-      // try current format first
       let raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) raw = localStorage.getItem("island-empires-save-v1");
+      if (!raw) raw = localStorage.getItem("island-empires-save-v2");
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.bases) {
           state = parsed;
           state.lastTick = parsed.lastTick || now();
+          state.bases.forEach(b => { b.size = BASE_SIZE; });
+          // prune units that no longer exist in the roster
           state.bases.forEach(b => {
-            b.size = BASE_SIZE;
-            b.buildings = b.buildings.map(migrateBuilding);
+            for (const k of Object.keys(b.army)) if (!UNITS[k]) delete b.army[k];
+            b.training = b.training.filter(tr => UNITS[tr.unit]);
           });
           return true;
         }
       }
-    } catch (e) { /* corrupt save -> fresh start */ }
+    } catch (e) { }
     return false;
   }
 
@@ -619,7 +805,7 @@ const Game = (() => {
     state.detections.forEach(d => {
       if (!d.shown && t >= d.at) {
         d.shown = true;
-        toast(`⚠️ ${d.attacker}'s forces detected heading for your base! Strength ~${d.strength}. They arrive in ${fmtHours((d.arrivesAt - t) / 3600)}.`, true);
+        toast(`⚠️ ${d.attacker}'s forces detected heading for your base! Est. strength ~${d.strength}. Arrives in ${fmtHours((d.arrivesAt - t) / 3600)}.`, true);
       }
     });
   }
@@ -642,5 +828,6 @@ const Game = (() => {
     startBuild, upgradeBuild, ccOf, canTrain, trainUnits,
     sendArmy, recallArmy, garrisonPower, armyPower,
     canBuyLand, buyLand, now, BASE_SIZE,
+    classOf, cargoSlots, transportCapacity, simulateBattle, estimatePower,
   };
 })();
