@@ -387,20 +387,16 @@ const MapView = (() => {
       ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
       ctx.setLineDash([]);
       // army marker
+        // army marker: vector icon rotated to direction of travel
       const p = armyProgress(army, t);
       const sp = proj(p.x, p.y);
       const r = Math.max(8, s * 0.32);
-      // marker disc
-      ctx.fillStyle = mine ? "#2e7d32" : "#b02020";
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.lineWidth = 1;
-      // icon
-      ctx.font = `${r * 1.2}px serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(mine ? "🚩" : "⚔️", sp.x, sp.y);
+      const dir = army.recalled
+        ? { x: army.from.x - army.to.x, y: army.from.y - army.to.y }
+        : { x: army.to.x - army.from.x, y: army.to.y - army.from.y };
+      const heading = Math.atan2(dir.y, dir.x);
+      const cls = Icons.dominantClass(army.units);
+      Icons.drawArmy(ctx, cls, sp.x, sp.y, r * 2.4, heading, mine);
       // ETA label
       const eta = Math.max(0, army.arrivesAt - t);
       const label = Game.fmtHours(eta / 3600);
