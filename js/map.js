@@ -22,6 +22,22 @@ const MapView = (() => {
     canvas.addEventListener("touchend", onTouchEnd);
     window.addEventListener("resize", resize);
     resize();
+    
+        startAnimLoop();
+  }
+
+  /* Smooth animation loop — capped at ~30fps and only while the map is visible,
+     so phones stay lag-free and battery-friendly. */
+  let rafLast = 0;
+  function startAnimLoop() {
+    const loop = (ts) => {
+      requestAnimationFrame(loop);
+      if (ts - rafLast < 33) return;   // ~30 fps
+      rafLast = ts;
+      const mapView = document.getElementById("map-view");
+      if (mapView.classList.contains("active")) draw();
+    };
+    requestAnimationFrame(loop);
   }
 
   function resize() {
