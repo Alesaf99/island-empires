@@ -22,8 +22,70 @@ const BaseView = (() => {
     canvas.addEventListener("touchstart", onTouchStart, { passive: false });
     canvas.addEventListener("touchmove", onTouchMove, { passive: false });
     canvas.addEventListener("touchend", onTouchEnd);
+    canvas.addEventListener("contextmenu", onCancelPlace);
+    window.addEventListener("keydown", e => {
+      if (e.key === "Escape" && placing) onCancelPlace(e);
+    });
     window.addEventListener("resize", resize);
     resize();
+    addGarrisonButton();
+    // smooth 30fps loop, only while base view is visible (phone friendly)
+    startAnimLoop();
+  }
+
+  function onCancelPlace(e) {
+    if (e) e.preventDefault();
+    if (placing) {
+      toast("❌ Placement cancelled.");
+      placing = null;
+      draw();
+    }
+  }
+
+  let rafLast = 0;
+  function startAnimLoop() {
+    const loop = (ts) => {
+      requestAnimationFrame(loop);
+      if (ts - rafLast < 33) return;   // ~30 fps
+      rafLast = ts;
+      const baseView = document.getElementById("base-view");
+      if (baseView.classList.contains("active")) draw();
+    };
+    requestAnimationFrame(loop);
+  }
+
+  /* Garrison button in the base HUD: lists all units stationed here */
+  function addGarrisonButton() {
+    const hud = document.getElementById("base-hud");
+    const btn = document.createElement("button");
+    btn.className = "action primary";
+    btn.textContent = "🪖 Garrison";
+    btn.onclick = showGarrisonModal;
+    btn.style.marginLeft = "auto";
+    hud.appendChild(btn);
+  }
+
+  function showGarrisonModal() {
+    const b = base();
+    document.getElementById("building-name").textContent = `🪖 Garrison — ${b.name}`;
+    document.getElementById("building-desc").textContent = "Units stationed at this base. They defend automatically and can be dispatched to battle from the World Map.";
+    const stats = document.getElementById("building-stats");
+    const entries = Object.entries(b.army).filter(([, c]) => c > 0);
+    if (!entries.length && (!b.training || !b.training.length)) {
+      stats.innerHTML = "<div>No units stationed here. Train some in the Barracks, Factory, Heavy Factory, Airfield or Harbor.</div>";
+    } else {
+      stats.innerHTML = entries.map(([k, c]) => {
+        const u = UNITS[k];
+        const dmg = Object.entries(u.dmg || {}).map(([t, d]) => `${t}: ${d}`).join(", ") || "support";
+        return `<div>${u.icon} <b>${u.name}</b> ×${c} — HP ${u.hp}, dmg ${dmg}, speed ${u.speed}/h${u.stealth ? " | 🥷 stealth" : ""}</div>`;
+      }).join("");
+      const tr = (b.training || []).map(t2 =>
+        `<div style="opacity:0.7">⏳ ${UNITS[t2.unit].icon} ${UNITS[t2.unit].name} ×${t2.count} training…</div>`).join("");
+      stats.innerHTML += tr;
+    }
+    const actions = document.getElementById("building-actions");
+    actions.innerHTML = "";
+    openModal("building-modal");
   }
 
   function resize() {
@@ -42,11 +104,7 @@ const BaseView = (() => {
     cam.y += canvas.height / 2 - p.y;
   }
 
-  /* ---------- projection: world rotated 45 degrees, viewed tilted ----------
-     tile (tx, ty) -> screen:
-       sx = cam.x + (tx - ty) * k
-       sy = cam.y + (tx + ty) * k * Y_SCALE
-     where k = TILE * zoom / 2                                             */
+  /* ---------- projection: world rotated 45 degrees, viewed tilted ---------- */
   function k() { return TILE * cam.zoom / 2; }
 
   function proj(tx, ty) {
@@ -186,8 +244,7 @@ const BaseView = (() => {
     else showBuildMenu(tx, ty);
     draw();
   }
-
-  /* ---------- building modal ---------- */
+    /* ---------- building modal ---------- */
   function showBuildingModal(bld) {
     const b = base();
     const def = BUILDINGS[bld.type];
@@ -243,7 +300,7 @@ const BaseView = (() => {
     const b = base();
     const cc = Game.ccOf(b);
     document.getElementById("building-name").textContent = "🏗️ Construct Building";
-    document.getElementById("building-desc").textContent = `Choose a building, then click where to place it. Command Center level ${cc} allows buildings up to level ${cc + 1}.`;
+    document.getElementById("building-desc").textContent = `Choose a building, then click where to place it. Right-click or ESC cancels. Command Center level ${cc} allows buildings up to level ${cc + 1}.`;
     document.getElementById("building-stats").innerHTML = "";
     const actions = document.getElementById("building-actions");
     actions.innerHTML = "";
@@ -257,7 +314,7 @@ const BaseView = (() => {
       btn.onclick = () => {
         placing = { type };
         closeModal("building-modal");
-        toast("📍 Click a location on the ground to place the building.");
+        toast("📍 Click a location to place. ESC or right-click cancels.");
         draw();
       };
       actions.appendChild(btn);
@@ -268,7 +325,6 @@ const BaseView = (() => {
   /* ---------- training modal ---------- */
   function showTrainModal(bldType) {
     const b = base();
-    // which unit classes each production building trains
     const buildingClasses = {
       barracks: ["infantry"],
       factory: ["ground_veh"],
@@ -283,8 +339,8 @@ const BaseView = (() => {
     stats.innerHTML = "";
     Object.entries(UNITS).forEach(([key, u]) => {
       if (!classes.includes(u.cls)) return;
-      if (bldType === "heavy_factory" && u.price < 3000) return; // heavy factory: tanks only
-      if (bldType === "factory" && u.price >= 3000) return;     // factory: IFVs only
+      if (bldType === "heavy_factory" && u.price < 3000) return;
+      if (bldType === "factory" && u.price >= 3000) return;
       const dmgDesc = Object.entries(u.dmg || {}).map(([t, d]) => `${t}: ${d}`).join(", ") || "—";
       const stealthTag = u.stealth ? " | 🥷 stealth" : "";
       const transportTag = u.capacity ? ` | carries ${u.capacity}` : u.jetCapacity ? ` | ${u.jetCapacity} jets + 10 helis` : "";
@@ -334,14 +390,22 @@ const BaseView = (() => {
     return `rgb(${r | 0},${g | 0},${b2 | 0})`;
   }
 
-  /* Projected corners of a building footprint, ordered so that
-     [0]=north corner, [1]=east, [2]=south, [3]=west on screen. */
   function boxCorners(bld, def) {
     const x = bld.x, y = bld.y, w = def.size.w, h = def.size.h;
     const hpx = def.height * TILE * cam.zoom;
     const base = [proj(x, y), proj(x + w, y), proj(x + w, y + h), proj(x, y + h)];
     const top = base.map(p => ({ x: p.x, y: p.y - hpx }));
     return { base, top, hpx };
+  }
+
+  function roundRectBase(x, y, w2, h2, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w2, y, x + w2, y + h2, r);
+    ctx.arcTo(x + w2, y + h2, x, y + h2, r);
+    ctx.arcTo(x, y + h2, x, y, r);
+    ctx.arcTo(x, y, x + w2, y, r);
+    ctx.closePath();
   }
 
   function poly(pts, fill, stroke) {
@@ -383,14 +447,14 @@ const BaseView = (() => {
       ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.stroke();
     }
 
-    // buildings, painter's order: back (small x+y) to front (large x+y)
+    // buildings, painter's order: back to front
     const sorted = [...b.buildings].sort((a, c) => {
       const ad = BUILDINGS[a.type], cd = BUILDINGS[c.type];
       return (a.x + a.y + (ad.size.w + ad.size.h) / 2) - (c.x + c.y + (cd.size.w + cd.size.h) / 2);
     });
     sorted.forEach(bld => drawBuilding(bld, BUILDINGS[bld.type]));
 
-    // hovered tile highlight (diamond outline)
+    // hovered tile highlight
     if (hover && hover.x >= 0 && hover.y >= 0 && hover.x < N && hover.y < N) {
       const t0 = proj(hover.x, hover.y), t1 = proj(hover.x + 1, hover.y),
             t2 = proj(hover.x + 1, hover.y + 1), t3 = proj(hover.x, hover.y + 1);
@@ -414,8 +478,8 @@ const BaseView = (() => {
       ctx.strokeStyle = "#ffd700";
       ctx.lineWidth = 3;
       poly(top, null, "#ffd700");
-      poly([bs[1], bs[2], top[2], top[1]], null, "#ffd700"); // right wall edge
-      poly([bs[3], bs[2], top[2], top[3]], null, "#ffd700"); // left wall edge
+      poly([bs[1], bs[2], top[2], top[1]], null, "#ffd700");
+      poly([bs[3], bs[2], top[2], top[3]], null, "#ffd700");
       ctx.lineWidth = 1;
     }
 
@@ -424,6 +488,19 @@ const BaseView = (() => {
     ctx.font = "bold 16px sans-serif";
     ctx.textAlign = "left";
     ctx.fillText(`${b.name} — Island: ${islandName(b)}  (drag to pan, scroll to zoom)`, 12, 22);
+
+    // placement mode hint
+    if (placing) {
+      const def = BUILDINGS[placing.type];
+      ctx.font = "bold 14px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(10,20,35,0.75)";
+      const msg = `Placing ${def.icon} ${def.name} (${def.size.w}×${def.size.h}) — click ground to build · ESC or right-click to cancel`;
+      const tw = ctx.measureText(msg).width + 16;
+      roundRectBase(w / 2 - tw / 2, h - 64, tw, 26, 6); ctx.fill();
+      ctx.fillStyle = "#ffd700";
+      ctx.fillText(msg, w / 2, h - 46);
+    }
 
     renderQueue(b);
   }
@@ -437,26 +514,29 @@ const BaseView = (() => {
     const underConstruction = bld.upgradeEndsAt && bld.upgradeEndsAt > t;
     const { base: bs, top, hpx } = boxCorners(bld, def);
 
-    // ground shadow (offset toward south)
+    // ground shadow
     poly([{ x: bs[0].x + 5, y: bs[0].y + 3 }, { x: bs[1].x + 5, y: bs[1].y + 3 },
           { x: bs[2].x + 5, y: bs[2].y + 3 }, { x: bs[3].x + 5, y: bs[3].y + 3 }], "rgba(0,0,0,0.18)");
 
-    // left wall (west->south face)
+    // left wall
     poly([bs[3], bs[2], top[2], top[3]], shade(def.color, 0.45));
 
-    // right wall (south->east face)
+    // right wall
     poly([bs[1], bs[2], top[2], top[1]], shade(def.color, 0.65));
 
     // roof
     const roofColor = underConstruction ? shade(def.color, 0.7) : def.color;
     poly(top, roofColor, "rgba(0,0,0,0.35)");
 
-    // icon on the roof center
+    // distinctive roof details per building type
+    if (!underConstruction) drawRoofDetail(bld, top, def, t);
+
+    // icon on the roof center (smaller now that roofs have detail)
     const cx = (top[0].x + top[2].x) / 2;
     const cy = (top[0].y + top[2].y) / 2;
     const rw = Math.abs(top[1].x - top[3].x);
     const rh = Math.abs(top[2].y - top[0].y);
-    ctx.font = `${Math.floor(Math.max(10, Math.min(rw, rh * 2) * 0.4))}px serif`;
+    ctx.font = `${Math.floor(Math.max(10, Math.min(rw, rh * 2) * 0.3))}px serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(def.icon, cx, cy);
@@ -482,6 +562,186 @@ const BaseView = (() => {
       ctx.fillRect(mx - bw / 2, my - 3, bw, 5);
       ctx.fillStyle = "#ffb400";
       ctx.fillRect(mx - bw / 2, my - 3, bw * pct / 100, 5);
+    }
+  }
+
+  /* ---------- distinctive roof details per building ---------- */
+  function drawRoofDetail(bld, top, def, t) {
+    const cx = (top[0].x + top[2].x) / 2;
+    const cy = (top[0].y + top[2].y) / 2;
+    const rw = Math.abs(top[1].x - top[3].x);
+    const rh = Math.abs(top[2].y - top[0].y);
+    const anim = Date.now() / 1000;
+
+    switch (bld.type) {
+      case "airfield": {
+        // tarmac + runway center line with dashes + helipad
+        poly(top, "#3d4652");
+        ctx.strokeStyle = "rgba(255,255,255,0.85)";
+        ctx.lineWidth = Math.max(1.5, rw * 0.02);
+        ctx.setLineDash([rw * 0.06, rw * 0.05]);
+        ctx.beginPath();
+        ctx.moveTo(top[3].x + rw * 0.1, (top[3].y + top[0].y) / 2);
+        ctx.lineTo(top[1].x - rw * 0.1, (top[1].y + top[2].y) / 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // helipad circle
+        ctx.beginPath();
+        ctx.arc(cx + rw * 0.3, cy + rh * 0.25, Math.min(rw, rh * 2) * 0.11, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        // parked jet silhouette
+        ctx.fillStyle = "rgba(20,25,35,0.8)";
+        ctx.beginPath();
+        ctx.moveTo(cx - rw * 0.22, cy - rh * 0.05);
+        ctx.lineTo(cx - rw * 0.34, cy - rh * 0.28);
+        ctx.lineTo(cx - rw * 0.18, cy - rh * 0.08);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case "harbor": {
+        // dry dock: water pool + quay crane
+        poly(top, "#1d5a8a");
+        ctx.strokeStyle = "#222";
+        ctx.lineWidth = Math.max(1.5, rw * 0.025);
+        ctx.beginPath();
+        ctx.moveTo(cx - rw * 0.3, cy + rh * 0.1); ctx.lineTo(cx - rw * 0.3, cy - rh * 0.45);
+        ctx.lineTo(cx + rw * 0.25, cy - rh * 0.25);
+        ctx.moveTo(cx - rw * 0.3, cy - rh * 0.45); ctx.lineTo(cx - rw * 0.42, cy - rh * 0.2);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        // hull in dock
+        ctx.fillStyle = "#8a8f99";
+        ctx.beginPath();
+        ctx.ellipse(cx + rw * 0.15, cy + rh * 0.15, rw * 0.18, rh * 0.09, 0, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "oil_rig": {
+        // derrick tower
+        ctx.strokeStyle = "#3a3a3a";
+        ctx.lineWidth = Math.max(1.5, rw * 0.03);
+        ctx.beginPath();
+        ctx.moveTo(cx - rw * 0.15, cy + rh * 0.15); ctx.lineTo(cx, cy - rh * 0.5);
+        ctx.moveTo(cx + rw * 0.15, cy + rh * 0.15); ctx.lineTo(cx, cy - rh * 0.5);
+        ctx.moveTo(cx - rw * 0.1, cy - rh * 0.15); ctx.lineTo(cx + rw * 0.1, cy - rh * 0.15);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        // oil stain
+        ctx.fillStyle = "rgba(20,20,20,0.5)";
+        ctx.beginPath(); ctx.arc(cx + rw * 0.3, cy + rh * 0.3, rw * 0.05, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case "radar_station": {
+        // rotating dish
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(anim);
+        ctx.strokeStyle = "#e0e0e0";
+        ctx.lineWidth = Math.max(1.5, rw * 0.04);
+        ctx.beginPath(); ctx.arc(0, 0, rw * 0.16, Math.PI * 0.2, Math.PI * 1.2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(rw * 0.14, 0); ctx.stroke();
+        ctx.restore();
+        ctx.lineWidth = 1;
+        break;
+      }
+      case "comms_tower": {
+        // antenna mast + blinking beacon
+        ctx.strokeStyle = "#3a3a3a";
+        ctx.lineWidth = Math.max(1.5, rw * 0.04);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + rh * 0.1); ctx.lineTo(cx, cy - rh * 0.7); ctx.stroke();
+        ctx.lineWidth = 1;
+        const on = Math.floor(anim * 2) % 2 === 0;
+        if (on) {
+          ctx.fillStyle = "#ff4040";
+          ctx.beginPath(); ctx.arc(cx, cy - rh * 0.7, Math.max(2, rw * 0.05), 0, Math.PI * 2); ctx.fill();
+        }
+        break;
+      }
+      case "factory":
+      case "heavy_factory": {
+        // chimneys + animated smoke puffs
+        ctx.fillStyle = "#555b66";
+        const chW = rw * 0.07, chH = rh * 0.35;
+        ctx.fillRect(cx - rw * 0.25, cy - chH, chW, chH);
+        ctx.fillRect(cx + rw * 0.12, cy - chH * 0.75, chW, chH * 0.75);
+        for (let i = 0; i < 3; i++) {
+          const ph = (anim * 0.4 + i / 3) % 1;
+          ctx.fillStyle = `rgba(200,200,200,${0.4 * (1 - ph)})`;
+          ctx.beginPath();
+          ctx.arc(cx - rw * 0.21 + ph * rw * 0.08, cy - chH - ph * rh * 0.5, rw * 0.04 + ph * rw * 0.05, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        break;
+      }
+      case "command_center": {
+        // colonnade + waving flag
+        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+        ctx.lineWidth = Math.max(1, rw * 0.02);
+        for (let i = -2; i <= 2; i++) {
+          if (i === 0) continue;
+          const px = cx + i * rw * 0.14;
+          const py = cy + i * rh * 0.14;
+          ctx.beginPath(); ctx.moveTo(px - rw * 0.03, py + rh * 0.05); ctx.lineTo(px - rw * 0.03, py - rh * 0.1); ctx.stroke();
+        }
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "#333";
+        ctx.beginPath(); ctx.moveTo(cx + rw * 0.35, cy + rh * 0.1); ctx.lineTo(cx + rw * 0.35, cy - rh * 0.45); ctx.stroke();
+        ctx.fillStyle = "#d93b3b";
+        ctx.beginPath();
+        ctx.moveTo(cx + rw * 0.35, cy - rh * 0.45);
+        ctx.lineTo(cx + rw * 0.55 + Math.sin(anim * 3) * rw * 0.03, cy - rh * 0.4);
+        ctx.lineTo(cx + rw * 0.35, cy - rh * 0.28);
+        ctx.closePath(); ctx.fill();
+        break;
+      }
+      case "market": {
+        // striped awning
+        const stripes = 6;
+        for (let i = 0; i < stripes; i++) {
+          ctx.fillStyle = i % 2 === 0 ? "rgba(255,255,255,0.55)" : "rgba(180,80,40,0.55)";
+          const fx = top[3].x + (top[1].x - top[3].x) * (i / stripes);
+          const fy = top[3].y + (top[1].y - top[3].y) * (i / stripes);
+          const fx2 = top[3].x + (top[1].x - top[3].x) * ((i + 1) / stripes);
+          const fy2 = top[3].y + (top[1].y - top[3].y) * ((i + 1) / stripes);
+          const ux = (top[0].x - top[3].x) / stripes * 2;
+          const uy = (top[0].y - top[3].y) / stripes * 2;
+          ctx.beginPath();
+          ctx.moveTo(fx, fy); ctx.lineTo(fx2, fy2);
+          ctx.lineTo(fx2 + ux, fy2 + uy);
+          ctx.lineTo(fx + ux, fy + uy);
+          ctx.closePath(); ctx.fill();
+        }
+        break;
+      }
+      case "gold_mine": {
+        // mine entrance + gold pile
+        ctx.fillStyle = "#3a3226";
+        ctx.beginPath();
+        ctx.arc(cx, cy, rw * 0.12, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = "#ffd700";
+        ctx.beginPath();
+        ctx.arc(cx + rw * 0.22, cy + rh * 0.2, rw * 0.05, 0, Math.PI * 2);
+        ctx.arc(cx + rw * 0.28, cy + rh * 0.25, rw * 0.04, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "barracks": {
+        // drill yard + flag
+        ctx.strokeStyle = "rgba(255,255,255,0.4)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx - rw * 0.3, cy - rh * 0.1, rw * 0.25, rh * 0.3);
+        ctx.strokeRect(cx + rw * 0.05, cy - rh * 0.1, rw * 0.25, rh * 0.3);
+        ctx.strokeStyle = "#333";
+        ctx.beginPath(); ctx.moveTo(cx - rw * 0.35, cy + rh * 0.25); ctx.lineTo(cx - rw * 0.35, cy - rh * 0.25); ctx.stroke();
+        ctx.fillStyle = "#3d6b3d";
+        ctx.fillRect(cx - rw * 0.35, cy - rh * 0.25, rw * 0.12, rh * 0.1);
+        break;
+      }
+      default:
+        break;
     }
   }
 
