@@ -395,8 +395,8 @@ const MapView = (() => {
         ? { x: army.from.x - army.to.x, y: army.from.y - army.to.y }
         : { x: army.to.x - army.from.x, y: army.to.y - army.from.y };
       const heading = Math.atan2(dir.y, dir.x);
-      const cls = Icons.dominantClass(army.units);
-      Icons.drawArmy(ctx, cls, sp.x, sp.y, r * 2.4, heading, mine);
+            const unitKey = Icons.dominantUnit(army.units) || Icons.dominantClass(army.units);
+      Icons.drawArmy(ctx, unitKey, sp.x, sp.y, r * 2.4, heading, mine);
       // ETA label
       const eta = Math.max(0, army.arrivesAt - t);
       const label = Game.fmtHours(eta / 3600);
