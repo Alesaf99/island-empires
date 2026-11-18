@@ -21,29 +21,49 @@ const Icons = (() => {
   let size_hint = 10;
 
   /* ---- fighter jet: dart silhouette (F-22 style delta wings) ---- */
+    /* ---- fighter jet: F-22 Raptor planform (blended diamond wing, twin canted tails, two engine nozzles) ---- */
   function jet(ctx, cx, cy, size, heading, fill, stroke) {
     size_hint = size;
     frame(ctx, cx, cy, size, heading, s => {
       ctx.beginPath();
-      ctx.moveTo(s, 0);                       // nose
-      ctx.lineTo(-s * 0.15, s * 0.28);        // wing root front
-      ctx.lineTo(-s * 0.75, s * 0.95);        // left wingtip
-      ctx.lineTo(-s * 0.55, s * 0.30);        // wing trailing kink
-      ctx.lineTo(-s * 0.95, s * 0.35);        // left tail
-      ctx.lineTo(-s * 0.85, 0);               // engine
-      ctx.lineTo(-s * 0.95, -s * 0.35);       // right tail
-      ctx.lineTo(-s * 0.55, -s * 0.30);
-      ctx.lineTo(-s * 0.75, -s * 0.95);        // right wingtip
-      ctx.lineTo(-s * 0.15, -s * 0.28);
+      ctx.moveTo(s, 0);                          // pointed nose
+      ctx.lineTo(s * 0.35, s * 0.10);           // chine
+      ctx.lineTo(s * 0.25, s * 0.16);           // wing root
+      ctx.lineTo(-s * 0.45, s * 0.72);          // starboard wingtip
+      ctx.lineTo(-s * 0.52, s * 0.50);          // trailing-edge kink
+      ctx.lineTo(-s * 0.95, s * 0.46);          // stabilator tip
+      ctx.lineTo(-s * 0.95, 0);                 // rear center
+      ctx.lineTo(-s * 0.95, -s * 0.46);
+      ctx.lineTo(-s * 0.52, -s * 0.50);
+      ctx.lineTo(-s * 0.45, -s * 0.72);
+      ctx.lineTo(s * 0.25, -s * 0.16);
+      ctx.lineTo(s * 0.35, -s * 0.10);
       ctx.closePath();
       strokeFill(ctx, fill, stroke);
-      // canopy
+      // twin canted vertical stabilizers (seen edge-on from above)
+      ctx.fillStyle = shadeLocal(fill, 0.7);
       ctx.beginPath();
-      ctx.arc(s * 0.35, 0, s * 0.14, 0, Math.PI * 2);
+      ctx.moveTo(-s * 0.35, s * 0.14); ctx.lineTo(-s * 0.62, s * 0.34); ctx.lineTo(-s * 0.70, s * 0.30); ctx.lineTo(-s * 0.42, s * 0.10);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.35, -s * 0.14); ctx.lineTo(-s * 0.62, -s * 0.34); ctx.lineTo(-s * 0.70, -s * 0.30); ctx.lineTo(-s * 0.42, -s * 0.10);
+      ctx.closePath(); ctx.fill();
+      // two rectangular engine nozzles
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(-s * 0.95, -s * 0.16, s * 0.18, s * 0.13);
+      ctx.fillRect(-s * 0.95, s * 0.03, s * 0.18, s * 0.13);
+      // cockpit canopy
+      ctx.beginPath();
+      ctx.moveTo(s * 0.72, 0);
+      ctx.lineTo(s * 0.30, s * 0.09);
+      ctx.lineTo(s * 0.12, 0);
+      ctx.lineTo(s * 0.30, -s * 0.09);
+      ctx.closePath();
       ctx.fillStyle = "rgba(140,200,255,0.9)";
       ctx.fill();
     });
   }
+  
 
   /* ---- bomber: wide straight wings, long fuselage ---- */
   function bomber(ctx, cx, cy, size, heading, fill, stroke) {
