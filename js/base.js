@@ -417,6 +417,31 @@ const BaseView = (() => {
     return ((n ^ (n >> 16)) >>> 0) / 4294967295;
   }
 
+    /* pixel-art grass texture: small offscreen canvas, 1 pixel = 1 tile */
+  let grassTexture = null;
+  function ensureGrassTexture(N) {
+    if (grassTexture) return;
+    const cv = document.createElement("canvas");
+    cv.width = N; cv.height = N;
+    const g = cv.getContext("2d");
+    // dithered green palette (base / dark / light / clump / dry)
+    for (let x = 0; x < N; x++) {
+      for (let y = 0; y < N; y++) {
+        const h1 = tileHash(x, y);
+        let c;
+        if (h1 < 0.06) c = "#245c26";        // dark clump
+        else if (h1 < 0.22) c = "#35703a";   // darker green speckle
+        else if (h1 < 0.70) c = "#3e7a3e";   // base green
+        else if (h1 < 0.90) c = "#4a8a48";   // lighter green speckle
+        else if (h1 < 0.97) c = "#69924a";   // sunlit patch
+        else c = "#8aa050";                  // rare dry spot
+        g.fillStyle = c;
+        g.fillRect(x, y, 1, 1);
+      }
+    }
+    grassTexture = cv;
+  }
+
   function shade(hex, f) {
     const n = parseInt(hex.slice(1), 16);
     const r = Math.max(0, Math.min(255, ((n >> 16) & 255) * f));
@@ -472,47 +497,17 @@ const BaseView = (() => {
     poly([c0, c1, c2, c3], null, "#c2a878");
     ctx.lineWidth = 1;
 
-    // grass texture: deterministic patches + blade clusters (skipped when zoomed far out)
-    if (cam.zoom > 0.45) {
-      const vis0 = unproj(0, 0), vis1 = unproj(w, h);
-      const tx0 = Math.max(0, Math.floor(vis0.x)), tx1 = Math.min(N, Math.ceil(vis1.x));
-      const ty0 = Math.max(0, Math.floor(vis0.y)), ty1 = Math.min(N, Math.ceil(vis1.y));
-      for (let tx = tx0; tx < tx1; tx++) {
-        for (let ty = ty0; ty < ty1; ty++) {
-          const h1 = tileHash(tx, ty);
-          const p = proj(tx + 0.5, ty + 0.5);
-          const r = TILE * cam.zoom * 0.30;
-          if (h1 < 0.07) {
-            // dark clump
-            ctx.fillStyle = "rgba(28,64,28,0.35)";
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y - r * 0.5); ctx.lineTo(p.x + r * 0.5, p.y);
-            ctx.lineTo(p.x, p.y + r * 0.5); ctx.lineTo(p.x - r * 0.5, p.y);
-            ctx.closePath(); ctx.fill();
-          } else if (h1 > 0.90) {
-            // light dry patch
-            ctx.fillStyle = "rgba(160,180,110,0.22)";
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y - r * 0.35); ctx.lineTo(p.x + r * 0.35, p.y);
-            ctx.lineTo(p.x, p.y + r * 0.35); ctx.lineTo(p.x - r * 0.35, p.y);
-            ctx.closePath(); ctx.fill();
-          } else if (h1 > 0.30 && h1 < 0.34) {
-            // grass blades
-            ctx.strokeStyle = "rgba(60,110,50,0.5)";
-            ctx.lineWidth = 1;
-            const a = h1 * 40;
-            for (let b2 = -1; b2 <= 1; b2++) {
-              const bx = p.x + b2 * r * 0.25, by = p.y;
-              ctx.beginPath();
-              ctx.moveTo(bx, by);
-              ctx.lineTo(bx + Math.cos(a + b2) * r * 0.22, by - r * 0.30);
-              ctx.stroke();
-            }
-          }
-        }
-      }
-    }
-
+       // pixel-art grass: pre-rendered low-res texture, 1 chunky pixel per tile,
+    // blitted through the isometric transform with smoothing off (crisp pixels)
+    ensureGrassTexture(N);
+    ctx.save();
+    const kk0 = k();
+    ctx.transform(kk0, kk0 * Y_SCALE, -kk0, kk0 * Y_SCALE, cam.x, cam.y);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(grassTexture, 0, 0, N, N);
+    ctx.restore();
+    ctx.imageSmoothingEnabled = true;
+    
     // tile grid: lines along both axes
     ctx.strokeStyle = "rgba(0,0,0,0.10)";
     const lo = -4, hi = N + 4;
