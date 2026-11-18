@@ -73,14 +73,21 @@ const BaseView = (() => {
     const entries = Object.entries(b.army).filter(([, c]) => c > 0);
     if (!entries.length && (!b.training || !b.training.length)) {
       stats.innerHTML = "<div>No units stationed here. Train some in the Barracks, Factory, Heavy Factory, Airfield or Harbor.</div>";
-    } else {
-      stats.innerHTML = entries.map(([k, c]) => {
+       } else {
+      stats.innerHTML = "";
+      entries.forEach(([k, c]) => {
         const u = UNITS[k];
         const dmg = Object.entries(u.dmg || {}).map(([t, d]) => `${t}: ${d}`).join(", ") || "support";
-        return `<div>${u.icon} <b>${u.name}</b> ×${c} — HP ${u.hp}, dmg ${dmg}, speed ${u.speed}/h${u.stealth ? " | 🥷 stealth" : ""}</div>`;
-      }).join("");
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;gap:8px;align-items:center;padding:3px 0;border-bottom:1px dashed #2a3f55;";
+        row.appendChild(iconCanvas(k));
+        const txt = document.createElement("div");
+        txt.innerHTML = `<b>${u.name}</b> ×${c} — HP ${u.hp}, dmg ${dmg}, speed ${u.speed}/h${u.stealth ? " | 🥷 stealth" : ""}`;
+        row.appendChild(txt);
+        stats.appendChild(row);
+      });
       const tr = (b.training || []).map(t2 =>
-        `<div style="opacity:0.7">⏳ ${UNITS[t2.unit].icon} ${UNITS[t2.unit].name} ×${t2.count} training…</div>`).join("");
+        `<div style="opacity:0.7">⏳ ${UNITS[t2.unit].name} ×${t2.count} training…</div>`).join("");
       stats.innerHTML += tr;
     }
     const actions = document.getElementById("building-actions");
@@ -345,12 +352,16 @@ const BaseView = (() => {
       const stealthTag = u.stealth ? " | 🥷 stealth" : "";
       const transportTag = u.capacity ? ` | carries ${u.capacity}` : u.jetCapacity ? ` | ${u.jetCapacity} jets + 10 helis` : "";
       const reqStr = Object.entries(u.requires).map(([t, l]) => `${BUILDINGS[t].name} lvl ${l}`).join(", ");
-      const row = document.createElement("div");
-      row.innerHTML = `${u.icon} <b>${u.name}</b> — HP ${u.hp}, dmg ${dmgDesc}, speed ${u.speed}/h — ${u.price} gold${stealthTag}${transportTag} <small>(${reqStr})</small> — <span id="train-count-${key}">0</span> owned`;
+            const row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:8px;align-items:flex-start;";
+      row.appendChild(iconCanvas(key));
+      const txt = document.createElement("div");
+      txt.innerHTML = `<b>${u.name}</b> — HP ${u.hp}, dmg ${dmgDesc}, speed ${u.speed}/h — ${u.price} gold${stealthTag}${transportTag} — <span id="train-count-${key}">0</span> owned`;
+      row.appendChild(txt);
       const controls = document.createElement("div");
       controls.style.cssText = "display:flex;gap:6px;align-items:center;margin:4px 0 8px 0;";
-      const minus = mkBtn("−", () => adjustTrain(key, -1));
-      const plus = mkBtn("+1", () => adjustTrain(key, 1));
+      const minus = ("−", () => adjustTrain(key, -1));
+      const plus = ("+1", () => adjustTrain(key, 1));
       const plus5 = mkBtn("+5", () => adjustTrain(key, 5));
       const trainBtn = mkBtn(`Train`, () => {
         const n = trainCounts[key] || 0;
@@ -379,6 +390,15 @@ const BaseView = (() => {
     btn.textContent = label;
     btn.onclick = fn;
     return btn;
+  }
+    /* small canvas showing a unit's vector icon — used in menus */
+  function iconCanvas(unitKey) {
+    const cv = document.createElement("canvas");
+    cv.width = 44; cv.height = 44;
+    cv.style.cssText = "flex:0 0 44px;background:rgba(255,255,255,0.05);border:1px solid #2e4a66;border-radius:6px;";
+    const c2 = cv.getContext("2d");
+    Icons.drawUnitByKey(c2, unitKey, 22, 22, 32, -Math.PI * 0.75, "#cfd8dc", "#1c2a3a");
+    return cv;
   }
 
   /* ---------- drawing helpers ---------- */
