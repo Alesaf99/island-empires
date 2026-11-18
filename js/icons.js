@@ -337,6 +337,39 @@ const Icons = (() => {
   }
 
   /* Map a unit class to its icon draw function */
+    /* ---- anti-tank soldier: kneeling figure with Javelin-style launcher ---- */
+  function atSoldier(ctx, cx, cy, size, heading, fill, stroke) {
+    size_hint = size;
+    frame(ctx, cx, cy, size, heading, s => {
+      // kneeling body behind the launcher
+      ctx.beginPath();
+      ctx.ellipse(-s * 0.3, 0, s * 0.35, s * 0.3, 0, 0, Math.PI * 2);
+      strokeFill(ctx, shadeLocal(fill, 0.85), stroke);
+      // helmet
+      ctx.beginPath();
+      ctx.arc(-s * 0.3, -s * 0.08, s * 0.2, 0, Math.PI * 2);
+      strokeFill(ctx, fill, stroke);
+      // launcher tube pointing forward
+      roundRectLocal(ctx, -s * 0.35, -s * 0.12, s * 1.2, s * 0.24, s * 0.08);
+      strokeFill(ctx, shadeLocal(fill, 0.7), stroke);
+      // CLU sight box on top of the tube
+      roundRectLocal(ctx, -s * 0.05, -s * 0.36, s * 0.42, s * 0.26, s * 0.05);
+      strokeFill(ctx, "rgba(35,45,60,0.95)", stroke);
+      // seeker lens dot
+      ctx.fillStyle = "rgba(140,200,255,0.9)";
+      ctx.beginPath(); ctx.arc(s * 0.16, -s * 0.23, s * 0.06, 0, Math.PI * 2); ctx.fill();
+      // muzzle
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(s * 0.78, -s * 0.14, s * 0.07, s * 0.28);
+      // backblast guard behind
+      ctx.strokeStyle = stroke || "#333";
+      ctx.lineWidth = Math.max(1, s * 0.06);
+      ctx.beginPath(); ctx.moveTo(-s * 0.35, 0); ctx.lineTo(-s * 0.5, 0); ctx.stroke();
+      ctx.lineWidth = 1;
+    });
+  }
+
+  /* Map a unit class to its icon draw function */
   const BY_CLASS = {
     jet,
     bomber,
@@ -348,6 +381,11 @@ const Icons = (() => {
     submarine: sub,
     carrier,
     transport_ship: transportShip,
+  };
+
+  /* Specific unit keys that get their own icon (override their class default) */
+  const KEY_ICONS = {
+    at_soldier: atSoldier,
   };
 
   /* Pick the dominant unit class in an army (by count, vehicles weigh more) */
@@ -362,13 +400,34 @@ const Icons = (() => {
     return best || "infantry";
   }
 
-  /* Public API */
+  /* Pick the dominant UNIT KEY in an army — lets armies of e.g. AT soldiers
+     display the AT icon instead of the generic soldier. */
+  function dominantUnit(units) {
+    let best = null, bestScore = -1;
+    for (const [k, c] of Object.entries(units)) {
+      if (!UNITS[k] || c <= 0) continue;
+      const score = c * (UNITS[k].cls === "infantry" ? 1 : 3) * (KEY_ICONS[k] ? 1.5 : 1);
+      if (score > bestScore) { bestScore = score; best = k; }
+    }
+    return best;
+  }
+
+  /* Public API: draw the icon for a unit class */
   function drawUnit(ctx, cls, cx, cy, size, heading, fill, stroke) {
     const fn = BY_CLASS[cls] || soldier;
     fn(ctx, cx, cy, size, heading, fill, stroke);
   }
 
-  function drawArmy(ctx, cls, cx, cy, size, heading, friendly) {
+  /* Draw the icon for a specific unit key (uses key-specific art when available) */
+  function drawUnitByKey(ctx, key, cx, cy, size, heading, fill, stroke) {
+    const fn = (key && KEY_ICONS[key])
+      || (UNITS[key] ? BY_CLASS[UNITS[key].cls] : null)
+      || soldier;
+    fn(ctx, cx, cy, size, heading, fill, stroke);
+  }
+
+  /* Draw an army marker: disc + dominant unit icon facing its heading */
+  function drawArmy(ctx, keyOrCls, cx, cy, size, heading, friendly) {
     const fill = friendly ? "#2e7d32" : "#b02020";
     // disc
     ctx.fillStyle = fill;
@@ -376,8 +435,12 @@ const Icons = (() => {
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(cx, cy, size / 2 + 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.lineWidth = 1;
-    drawUnit(ctx, cls, cx, cy, size, heading, "#e8e8e8", friendly ? "#1b4d1b" : "#5c1010");
+    // resolve to a draw function: key-specific art > key's class > the arg as class
+    const fn = (keyOrCls && KEY_ICONS[keyOrCls])
+      || (UNITS[keyOrCls] ? BY_CLASS[UNITS[keyOrCls].cls] : null)
+      || BY_CLASS[keyOrCls] || soldier;
+    fn(ctx, cx, cy, size, heading, "#e8e8e8", friendly ? "#1b4d1b" : "#5c1010");
   }
 
-  return { drawUnit, drawArmy, dominantClass };
+  return { drawUnit, drawUnitByKey, drawArmy, dominantClass, dominantUnit };
 })();
