@@ -73,7 +73,7 @@ const BaseView = (() => {
     const entries = Object.entries(b.army).filter(([, c]) => c > 0);
     if (!entries.length && (!b.training || !b.training.length)) {
       stats.innerHTML = "<div>No units stationed here. Train some in the Barracks, Factory, Heavy Factory, Airfield or Harbor.</div>";
-       } else {
+    } else {
       stats.innerHTML = "";
       entries.forEach(([k, c]) => {
         const u = UNITS[k];
@@ -251,7 +251,8 @@ const BaseView = (() => {
     else showBuildMenu(tx, ty);
     draw();
   }
-    /* ---------- building modal ---------- */
+
+  /* ---------- building modal ---------- */
   function showBuildingModal(bld) {
     const b = base();
     const def = BUILDINGS[bld.type];
@@ -351,17 +352,17 @@ const BaseView = (() => {
       const dmgDesc = Object.entries(u.dmg || {}).map(([t, d]) => `${t}: ${d}`).join(", ") || "—";
       const stealthTag = u.stealth ? " | 🥷 stealth" : "";
       const transportTag = u.capacity ? ` | carries ${u.capacity}` : u.jetCapacity ? ` | ${u.jetCapacity} jets + 10 helis` : "";
-      const reqStr = Object.entries(u.requires).map(([t, l]) => `${BUILDINGS[t].name} lvl ${l}`).join(", ");
-            const row = document.createElement("div");
+      const row = document.createElement("div");
       row.style.cssText = "display:flex;gap:8px;align-items:flex-start;";
       row.appendChild(iconCanvas(key));
+      const reqStr = Object.entries(u.requires).map(([t, l]) => `${BUILDINGS[t].name} lvl ${l}`).join(", ");
       const txt = document.createElement("div");
-      txt.innerHTML = `<b>${u.name}</b> — HP ${u.hp}, dmg ${dmgDesc}, speed ${u.speed}/h — ${u.price} gold${stealthTag}${transportTag} — <span id="train-count-${key}">0</span> owned`;
+      txt.innerHTML = `<b>${u.name}</b> — HP ${u.hp}, dmg ${dmgDesc}, speed ${u.speed}/h — ${u.price} gold${stealthTag}${transportTag} <small>(${reqStr})</small> — <span id="train-count-${key}">0</span> owned`;
       row.appendChild(txt);
       const controls = document.createElement("div");
       controls.style.cssText = "display:flex;gap:6px;align-items:center;margin:4px 0 8px 0;";
-      const minus = ("−", () => adjustTrain(key, -1));
-      const plus = ("+1", () => adjustTrain(key, 1));
+      const minus = mkBtn("−", () => adjustTrain(key, -1));
+      const plus = mkBtn("+1", () => adjustTrain(key, 1));
       const plus5 = mkBtn("+5", () => adjustTrain(key, 5));
       const trainBtn = mkBtn(`Train`, () => {
         const n = trainCounts[key] || 0;
@@ -383,15 +384,15 @@ const BaseView = (() => {
     const el = document.getElementById("train-count-" + key);
     if (el) el.textContent = `${trainCounts[key]} (+${b.army[key] || 0} in base)`;
   }
-
-  function mkBtn(label, fn) {
+    function mkBtn(label, fn) {
     const btn = document.createElement("button");
     btn.className = "action";
     btn.textContent = label;
     btn.onclick = fn;
     return btn;
   }
-    /* small canvas showing a unit's vector icon — used in menus */
+
+  /* small canvas showing a unit's vector icon — used in menus */
   function iconCanvas(unitKey) {
     const cv = document.createElement("canvas");
     cv.width = 44; cv.height = 44;
@@ -402,6 +403,20 @@ const BaseView = (() => {
   }
 
   /* ---------- drawing helpers ---------- */
+  /* how many stacked floors each building shows */
+  const STORIES = {
+    command_center: 2, barracks: 2, market: 2, comms_tower: 3,
+    factory: 2, heavy_factory: 1, oil_rig: 1, steel_mill: 2, gold_mine: 1,
+    airfield: 1, harbor: 1, radar_station: 1,
+  };
+
+  /* deterministic hash so grass doesn't flicker between frames */
+  function tileHash(x, y) {
+    let n = (x * 374761393 + y * 668265263) | 0;
+    n = (n ^ (n >> 13)) * 1274126177 | 0;
+    return ((n ^ (n >> 16)) >>> 0) / 4294967295;
+  }
+
   function shade(hex, f) {
     const n = parseInt(hex.slice(1), 16);
     const r = Math.max(0, Math.min(255, ((n >> 16) & 255) * f));
@@ -456,6 +471,47 @@ const BaseView = (() => {
     ctx.lineWidth = 3;
     poly([c0, c1, c2, c3], null, "#c2a878");
     ctx.lineWidth = 1;
+
+    // grass texture: deterministic patches + blade clusters (skipped when zoomed far out)
+    if (cam.zoom > 0.45) {
+      const vis0 = unproj(0, 0), vis1 = unproj(w, h);
+      const tx0 = Math.max(0, Math.floor(vis0.x)), tx1 = Math.min(N, Math.ceil(vis1.x));
+      const ty0 = Math.max(0, Math.floor(vis0.y)), ty1 = Math.min(N, Math.ceil(vis1.y));
+      for (let tx = tx0; tx < tx1; tx++) {
+        for (let ty = ty0; ty < ty1; ty++) {
+          const h1 = tileHash(tx, ty);
+          const p = proj(tx + 0.5, ty + 0.5);
+          const r = TILE * cam.zoom * 0.30;
+          if (h1 < 0.07) {
+            // dark clump
+            ctx.fillStyle = "rgba(28,64,28,0.35)";
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y - r * 0.5); ctx.lineTo(p.x + r * 0.5, p.y);
+            ctx.lineTo(p.x, p.y + r * 0.5); ctx.lineTo(p.x - r * 0.5, p.y);
+            ctx.closePath(); ctx.fill();
+          } else if (h1 > 0.90) {
+            // light dry patch
+            ctx.fillStyle = "rgba(160,180,110,0.22)";
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y - r * 0.35); ctx.lineTo(p.x + r * 0.35, p.y);
+            ctx.lineTo(p.x, p.y + r * 0.35); ctx.lineTo(p.x - r * 0.35, p.y);
+            ctx.closePath(); ctx.fill();
+          } else if (h1 > 0.30 && h1 < 0.34) {
+            // grass blades
+            ctx.strokeStyle = "rgba(60,110,50,0.5)";
+            ctx.lineWidth = 1;
+            const a = h1 * 40;
+            for (let b2 = -1; b2 <= 1; b2++) {
+              const bx = p.x + b2 * r * 0.25, by = p.y;
+              ctx.beginPath();
+              ctx.moveTo(bx, by);
+              ctx.lineTo(bx + Math.cos(a + b2) * r * 0.22, by - r * 0.30);
+              ctx.stroke();
+            }
+          }
+        }
+      }
+    }
 
     // tile grid: lines along both axes
     ctx.strokeStyle = "rgba(0,0,0,0.10)";
@@ -532,21 +588,41 @@ const BaseView = (() => {
   function drawBuilding(bld, def) {
     const t = Game.now();
     const underConstruction = bld.upgradeEndsAt && bld.upgradeEndsAt > t;
-    const { base: bs, top, hpx } = boxCorners(bld, def);
+    const stories = STORIES[bld.type] || 1;
+    const { base: bs } = boxCorners(bld, def);
+    const hpx = def.height * TILE * cam.zoom;
 
-    // ground shadow
+    // ground shadow (offset toward south)
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
     poly([{ x: bs[0].x + 5, y: bs[0].y + 3 }, { x: bs[1].x + 5, y: bs[1].y + 3 },
           { x: bs[2].x + 5, y: bs[2].y + 3 }, { x: bs[3].x + 5, y: bs[3].y + 3 }], "rgba(0,0,0,0.18)");
 
-    // left wall
-    poly([bs[3], bs[2], top[2], top[3]], shade(def.color, 0.45));
+    // stacked stories: each floor is a slightly smaller box on top of the last
+    const ccx = (bs[0].x + bs[2].x) / 2;
+    const ccy = (bs[0].y + bs[2].y) / 2;
+    const shrinkPt = (p, f) => ({ x: ccx + (p.x - ccx) * (1 - f), y: ccy + (p.y - ccy) * (1 - f) });
+    const storyH = hpx / stories;
+    let topFace = null;
 
-    // right wall
-    poly([bs[1], bs[2], top[2], top[1]], shade(def.color, 0.65));
+    for (let i = 0; i < stories; i++) {
+      const f = i * 0.09;               // each story pulls its footprint inward
+      const c0 = shrinkPt(bs[0], f), c1 = shrinkPt(bs[1], f),
+            c2 = shrinkPt(bs[2], f), c3 = shrinkPt(bs[3], f);
+      const t0 = { x: c0.x, y: c0.y - storyH }, t1 = { x: c1.x, y: c1.y - storyH },
+            t2 = { x: c2.x, y: c2.y - storyH }, t3 = { x: c3.x, y: c3.y - storyH };
+      // left wall of this story
+      poly([c3, c2, t2, t3], shade(def.color, 0.45 + i * 0.06));
+      // right wall of this story
+      poly([c1, c2, t2, t1], shade(def.color, 0.65 + i * 0.06));
+      // roof slab (next story draws on top of it)
+      const roofColor = (i < stories - 1)
+        ? shade(def.color, 0.9)
+        : (underConstruction ? shade(def.color, 0.7) : def.color);
+      poly([t0, t1, t2, t3], roofColor, "rgba(0,0,0,0.35)");
+      topFace = [t0, t1, t2, t3];
+    }
 
-    // roof
-    const roofColor = underConstruction ? shade(def.color, 0.7) : def.color;
-    poly(top, roofColor, "rgba(0,0,0,0.35)");
+    const top = topFace;
 
     // distinctive roof details per building type
     if (!underConstruction) drawRoofDetail(bld, top, def, t);
@@ -595,33 +671,56 @@ const BaseView = (() => {
 
     switch (bld.type) {
       case "airfield": {
-        // tarmac + runway center line with dashes + helipad
+        // tarmac + proper runway with edges, centerline dashes and thresholds
+        ctx.fillStyle = "#3d4652";
         poly(top, "#3d4652");
+        const ax = top[0], bx2 = top[2];
+        const dx2 = bx2.x - ax.x, dy2 = bx2.y - ax.y;
+        const L = Math.hypot(dx2, dy2) || 1;
+        const ux2 = dx2 / L, uy2 = dy2 / L;
+        const pX = -uy2, pY = ux2;
+        const off = Math.min(rw, rh * 2) * 0.13;
+        // runway edges
         ctx.strokeStyle = "rgba(255,255,255,0.85)";
         ctx.lineWidth = Math.max(1.5, rw * 0.02);
-        ctx.setLineDash([rw * 0.06, rw * 0.05]);
-        ctx.beginPath();
-        ctx.moveTo(top[3].x + rw * 0.1, (top[3].y + top[0].y) / 2);
-        ctx.lineTo(top[1].x - rw * 0.1, (top[1].y + top[2].y) / 2);
-        ctx.stroke();
+        for (const o of [-off, off]) {
+          ctx.beginPath();
+          ctx.moveTo(ax.x + pX * o, ax.y + pY * o);
+          ctx.lineTo(bx2.x + pX * o, bx2.y + pY * o);
+          ctx.stroke();
+        }
+        // centerline dashes
+        ctx.setLineDash([rw * 0.07, rw * 0.06]);
+        ctx.beginPath(); ctx.moveTo(ax.x, ax.y); ctx.lineTo(bx2.x, bx2.y); ctx.stroke();
         ctx.setLineDash([]);
+        // threshold bars at both ends
+        for (const end of [0.06, 0.94]) {
+          const tx3 = ax.x + dx2 * end, ty3 = ax.y + dy2 * end;
+          for (const o of [-off * 0.5, 0, off * 0.5]) {
+            ctx.beginPath();
+            ctx.moveTo(tx3 + pX * o - ux2 * rw * 0.05, ty3 + pY * o - uy2 * rw * 0.05);
+            ctx.lineTo(tx3 + pX * o + ux2 * rw * 0.05, ty3 + pY * o + uy2 * rw * 0.05);
+            ctx.stroke();
+          }
+        }
+        ctx.lineWidth = 1;
         // helipad circle
         ctx.beginPath();
-        ctx.arc(cx + rw * 0.3, cy + rh * 0.25, Math.min(rw, rh * 2) * 0.11, 0, Math.PI * 2);
+        ctx.arc(cx + rw * 0.28, cy + rh * 0.3, Math.min(rw, rh * 2) * 0.10, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.lineWidth = 1;
         // parked jet silhouette
         ctx.fillStyle = "rgba(20,25,35,0.8)";
         ctx.beginPath();
-        ctx.moveTo(cx - rw * 0.22, cy - rh * 0.05);
-        ctx.lineTo(cx - rw * 0.34, cy - rh * 0.28);
-        ctx.lineTo(cx - rw * 0.18, cy - rh * 0.08);
+        ctx.moveTo(cx - rw * 0.2, cy - rh * 0.1);
+        ctx.lineTo(cx - rw * 0.34, cy - rh * 0.34);
+        ctx.lineTo(cx - rw * 0.16, cy - rh * 0.12);
         ctx.closePath();
         ctx.fill();
         break;
       }
       case "harbor": {
         // dry dock: water pool + quay crane
+        ctx.fillStyle = "#1d5a8a";
         poly(top, "#1d5a8a");
         ctx.strokeStyle = "#222";
         ctx.lineWidth = Math.max(1.5, rw * 0.025);
@@ -639,18 +738,34 @@ const BaseView = (() => {
         break;
       }
       case "oil_rig": {
-        // derrick tower
+        // animated pumpjack (nodding donkey): beam pivots on a post
+        const bob = Math.sin(anim * 2.2) * 0.45;
+        const px3 = cx, py3 = cy + rh * 0.25;
+        const beamL = rw * 0.42;
+        // post
         ctx.strokeStyle = "#3a3a3a";
-        ctx.lineWidth = Math.max(1.5, rw * 0.03);
-        ctx.beginPath();
-        ctx.moveTo(cx - rw * 0.15, cy + rh * 0.15); ctx.lineTo(cx, cy - rh * 0.5);
-        ctx.moveTo(cx + rw * 0.15, cy + rh * 0.15); ctx.lineTo(cx, cy - rh * 0.5);
-        ctx.moveTo(cx - rw * 0.1, cy - rh * 0.15); ctx.lineTo(cx + rw * 0.1, cy - rh * 0.15);
-        ctx.stroke();
+        ctx.lineWidth = Math.max(2, rw * 0.04);
+        ctx.beginPath(); ctx.moveTo(px3, cy + rh * 0.45); ctx.lineTo(px3, py3); ctx.stroke();
+        // beam
+        const hx = px3 + Math.cos(bob - Math.PI / 2) * beamL;
+        const hy = py3 + Math.sin(bob - Math.PI / 2) * beamL;
+        const cw2x = px3 - Math.cos(bob - Math.PI / 2) * beamL * 0.5;
+        const cw2y = py3 - Math.sin(bob - Math.PI / 2) * beamL * 0.5;
+        ctx.strokeStyle = "#2c2c2c";
+        ctx.lineWidth = Math.max(2, rw * 0.035);
+        ctx.beginPath(); ctx.moveTo(cw2x, cw2y); ctx.lineTo(hx, hy); ctx.stroke();
+        // pump head (horse head)
+        ctx.fillStyle = "#2c2c2c";
+        ctx.beginPath(); ctx.arc(hx, hy, Math.max(2.5, rw * 0.055), 0, Math.PI * 2); ctx.fill();
+        // counterweight disc
+        ctx.fillStyle = "#4a4a4a";
+        ctx.beginPath(); ctx.arc(cw2x, cw2y, Math.max(3, rw * 0.075), 0, Math.PI * 2); ctx.fill();
         ctx.lineWidth = 1;
-        // oil stain
+        // well head + oil stain
+        ctx.fillStyle = "#333";
+        ctx.fillRect(hx - rw * 0.04, hy + rh * 0.1, rw * 0.08, rh * 0.12);
         ctx.fillStyle = "rgba(20,20,20,0.5)";
-        ctx.beginPath(); ctx.arc(cx + rw * 0.3, cy + rh * 0.3, rw * 0.05, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(hx, hy + rh * 0.25, rw * 0.06, 0, Math.PI * 2); ctx.fill();
         break;
       }
       case "radar_station": {
@@ -681,7 +796,8 @@ const BaseView = (() => {
         break;
       }
       case "factory":
-      case "heavy_factory": {
+      case "heavy_factory":
+      case "steel_mill": {
         // chimneys + animated smoke puffs
         ctx.fillStyle = "#555b66";
         const chW = rw * 0.07, chH = rh * 0.35;
