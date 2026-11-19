@@ -202,8 +202,8 @@ const Game = (() => {
       toast.error("Cannot build there — out of bounds or overlapping.", true);
       return false;
     }
-    if (b.buildings.some(x2 => x2.upgradeEndsAt && x2.upgradeEndsAt > now())) {
-      toast.error("Construction crew is busy. One project at a time per base.", true);
+      if (busyTeams(b) >= constructionTeams(b)) {
+      toast.error(`All construction teams busy (${busyTeams(b)}/${constructionTeams(b)}). Upgrade the Command Center for more.`, true);
       return false;
     }
     const cost = buildingCost(type, 1);
@@ -231,8 +231,8 @@ const Game = (() => {
       toast.error(`Upgrade your Command Center first (needs level ${bld.level + 1}).`, true);
       return false;
     }
-    if (b.buildings.some(bl => bl.upgradeEndsAt && bl.upgradeEndsAt > now())) {
-      toast.error("Construction crew is busy.", true);
+        if (busyTeams(b) >= constructionTeams(b)) {
+      toast.error(`All construction teams busy (${busyTeams(b)}/${constructionTeams(b)}). Upgrade the Command Center for more.`, true);
       return false;
     }
     const cost = buildingCost(bld.type, bld.level + 1);
@@ -250,6 +250,13 @@ const Game = (() => {
   function ccOf(base) {
     const cc = base.buildings.find(x => x.type === "command_center");
     return cc ? cc.level : 1;
+  }
+  /* Construction teams: one per Command Center level.
+     Each team can run one construction or upgrade project at a time. */
+  function constructionTeams(base) { return Math.max(1, ccOf(base)); }
+  function busyTeams(base) {
+    const t = now();
+    return base.buildings.filter(x => x.upgradeEndsAt && x.upgradeEndsAt > t).length;
   }
 
   /* ---------- training ---------- */
@@ -825,7 +832,7 @@ const Game = (() => {
     islandAt, cellIsLand, distCells, fmtHours,
     buildingCost, buildingTime, canAfford, pay,
     canPlace, buildingAt,
-    startBuild, upgradeBuild, ccOf, canTrain, trainUnits,
+startBuild, upgradeBuild, ccOf, canTrain, trainUnits, constructionTeams, busyTeams,
     sendArmy, recallArmy, garrisonPower, armyPower,
     canBuyLand, buyLand, now, BASE_SIZE,
     classOf, cargoSlots, transportCapacity, simulateBattle, estimatePower,
