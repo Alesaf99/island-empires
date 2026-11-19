@@ -49,8 +49,46 @@ toast.error = (msg) => toast(msg, true);
     m.addEventListener("click", e => { if (e.target === m) m.classList.add("hidden"); });
   });
 
-  // top bar refresh
-  Game.onChange(() => updateTopbar());
+  /* ---------- production-per-hour panel (toggle by clicking the resource bar) ---------- */
+  const resBar = document.getElementById("resources");
+  const prodPanel = document.createElement("div");
+  prodPanel.id = "prod-panel";
+  prodPanel.classList.add("hidden");
+  document.getElementById("topbar").appendChild(prodPanel);
+  let prodOpen = false;
+  resBar.style.cursor = "pointer";
+  resBar.title = "Click to show production per hour";
+  resBar.onclick = () => {
+    prodOpen = !prodOpen;
+    prodPanel.classList.toggle("hidden", !prodOpen);
+    updateProdPanel();
+  };
+
+  function updateProdPanel() {
+    if (!prodOpen) return;
+    const st = Game.state();
+    const prod = Game.productionPerHour();
+    let html = `<div class="pp-row">
+      <span title="Oil">🛢 +${Math.floor(prod.oil)}/h</span>
+      <span title="Steel">🔩 +${Math.floor(prod.steel)}/h</span>
+      <span title="Gold">💰 +${Math.floor(prod.gold)}/h</span></div>`;
+    // per-building breakdown
+    const t = Game.now();
+    const lines = [];
+    st.bases.forEach(b => b.buildings.forEach(x => {
+      const def = BUILDINGS[x.type];
+      if (!def.produces) return;
+      if (x.upgradeEndsAt && x.upgradeEndsAt > t) return;
+      for (const [r, amt] of Object.entries(def.produces)) {
+        lines.push(`<div>${b.name}: ${def.icon} ${def.name} Lv${x.level} → +${amt * x.level} ${r}/h</div>`);
+      }
+    }));
+    html += `<div class="pp-detail">${lines.length ? lines.join("") : "No production buildings yet — build Oil Rigs, Steel Mills and Gold Mines."}</div>`;
+    prodPanel.innerHTML = html;
+  }
+
+  // top bar refresh (also refreshes the production panel while open)
+  Game.onChange(() => { updateTopbar(); updateProdPanel(); });
   updateTopbar();
 
   // redraw canvases every second (timers, progress)
@@ -60,7 +98,7 @@ toast.error = (msg) => toast(msg, true);
   }, 1000);
 
   if (!Game.state().tutorialDone) {
-    toast("👋 Welcome, Commander! Click the ground in your base to build. Drag to pan, scroll to zoom.");
+    toast("👋 Welcome, Commander! Click an empty plot in your base to build. Drag to pan, scroll to zoom.");
     toast("💡 Build Oil Rigs and Steel Mills to grow your economy, then a Barracks to train troops.");
     Game.state().tutorialDone = true;
     Game.save();
