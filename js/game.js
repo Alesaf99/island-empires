@@ -175,13 +175,32 @@ const Game = (() => {
   function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
   }
-  function canPlace(base, type, x, y) {
+   function canPlace(base, type, x, y, ignore) {
     const def = BUILDINGS[type];
     if (x < 0 || y < 0 || x + def.size.w > BASE_SIZE || y + def.size.h > BASE_SIZE) return false;
     return !base.buildings.some(b => {
+      if (ignore && b === ignore) return false;   // allow moving into own plot
       const bd = BUILDINGS[b.type];
       return rectsOverlap(x, y, def.size.w, def.size.h, b.x, b.y, bd.size.w, bd.size.h);
     });
+  }
+
+  /* Relocate a building to a new spot (validated: no overlap, stays in bounds) */
+  function moveBuild(baseIdx, fromX, fromY, toX, toY) {
+    const b = state.bases[baseIdx];
+    const bld = b.buildings.find(bl => bl.x === fromX && bl.y === fromY);
+    if (!bld) { toast.error("Building not found.", true); return false; }
+    if (bld.x === toX && bld.y === toY) return true;   // no-op move
+    if (!canPlace(b, bld.type, toX, toY, bld)) {
+      toast.error("Cannot move there — occupied or out of bounds.", true);
+      return false;
+    }
+    bld.x = toX;
+    bld.y = toY;
+    toast(`${BUILDINGS[bld.type].name} relocated.`);
+    emit(); save();
+    return true;
+  }
   }
   function buildingAt(base, tx, ty) {
     return base.buildings.find(b => {
@@ -846,7 +865,7 @@ const Game = (() => {
     islandAt, cellIsLand, distCells, fmtHours,
     buildingCost, buildingTime, canAfford, pay,
     canPlace, buildingAt,
-startBuild, upgradeBuild, ccOf, canTrain, trainUnits, constructionTeams, busyTeams, productionPerHour,
+startBuild, upgradeBuild, ccOf, canTrain, trainUnits, constructionTeams, busyTeams, productionPerHour, moveBuild,
     sendArmy, recallArmy, garrisonPower, armyPower,
     canBuyLand, buyLand, now, BASE_SIZE,
     classOf, cargoSlots, transportCapacity, simulateBattle, estimatePower,
