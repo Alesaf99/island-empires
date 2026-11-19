@@ -33,7 +33,7 @@ const BUILDINGS = {
     desc: "Pumps crude oil. Your economy's lifeblood.",
     maxLevel: 12, cost: { steel: 150 }, costScale: 1.5,
     buildTime: 45, buildTimeScale: 1.6, produces: { oil: 60 }, unique: false,
-    size: { w: 5, h: 3 }, height: 0.5, color: "#8a7a55",
+    size: { w: 6, h: 3 }, height: 0.5, color: "#8a7a55",
   },
   steel_mill: {
     name: "Steel Mill", icon: "🏭",
