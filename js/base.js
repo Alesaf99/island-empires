@@ -9,6 +9,7 @@ const BaseView = (() => {
   let dragging = false, dragMoved = false, lastPt = null, downPt = null;
   let hover = null;        // hovered tile {x, y}
   let placing = null;      // { type } — building awaiting placement
+  let moving = null;      // { type, ox, oy, bld } — building being relocated
   let selected = null;    // selected building object
   let pinch = null;       // two-finger pinch state
 
@@ -35,11 +36,16 @@ const BaseView = (() => {
     startAnimLoop();
   }
 
-  function onCancelPlace(e) {
+    function onCancelPlace(e) {
     if (e) e.preventDefault();
     if (placing) {
       toast("❌ Placement cancelled.");
       placing = null;
+      draw();
+    }
+    if (moving) {
+      toast("❌ Move cancelled.");
+      moving = null;
       draw();
     }
   }
@@ -237,6 +243,18 @@ const BaseView = (() => {
     const tx = Math.floor(w.x), ty = Math.floor(w.y);
     const b = base();
 
+        if (moving) {
+      const def = BUILDINGS[moving.type];
+      const x = tx - Math.floor((def.size.w - 1) / 2);
+      const y = ty - Math.floor((def.size.h - 1) / 2);
+      if (Game.moveBuild(Game.state().activeBase, moving.ox, moving.oy, x, y)) {
+        moving = null;
+        selected = Game.buildingAt(b, x, y);
+      }
+      draw();
+      return;
+    }
+    
     if (placing) {
       const def = BUILDINGS[placing.type];
       const x = tx - Math.floor((def.size.w - 1) / 2);
@@ -296,7 +314,7 @@ const BaseView = (() => {
         btn.onclick = () => { closeModal("building-modal"); showTrainModal(bld.type); };
         actions.appendChild(btn);
       }
-      if (bld.level < def.maxLevel) {
+          if (bld.level < def.maxLevel) {
         const cost = Game.buildingCost(bld.type, bld.level + 1);
         const costStr = Object.entries(cost).map(([r, a]) => `${a} ${r}`).join(", ");
         const btn = document.createElement("button");
@@ -305,6 +323,17 @@ const BaseView = (() => {
         btn.onclick = () => { Game.upgradeBuild(Game.state().activeBase, bld.x, bld.y); closeModal("building-modal"); };
         actions.appendChild(btn);
       }
+      // move building
+      const mvBtn = document.createElement("button");
+      mvBtn.className = "action";
+      mvBtn.textContent = "✋ Move Building";
+      mvBtn.onclick = () => {
+        moving = { type: bld.type, ox: bld.x, oy: bld.y, bld };
+        closeModal("building-modal");
+        toast("📍 Click a new location to move it there. ESC or right-click cancels.");
+        draw();
+      };
+      actions.appendChild(mvBtn);
     }
     openModal("building-modal");
   }
@@ -586,6 +615,15 @@ const BaseView = (() => {
       drawGhost(ghost, def, valid);
     }
 
+        // move ghost (blue tint)
+    if (moving && hover) {
+      const def = BUILDINGS[moving.type];
+      const gx = hover.x - Math.floor((def.size.w - 1) / 2);
+      const gy = hover.y - Math.floor((def.size.h - 1) / 2);
+      const valid = Game.canPlace(b, moving.type, gx, gy, moving.bld);
+      drawGhost({ type: moving.type, x: gx, y: gy }, def, valid, true);
+    }
+
     // selected building outline
         if (selected) {
       const def = BUILDINGS[selected.type];
@@ -609,16 +647,17 @@ const BaseView = (() => {
     ctx.textAlign = "left";
     ctx.fillText(`${b.name} — Island: ${islandName(b)}  (drag to pan, scroll to zoom)`, 12, 22);
 
-    // placement mode hint
-    if (placing) {
-      const def = BUILDINGS[placing.type];
+      // placement / move mode hint
+    if (placing || moving) {
+      const def = BUILDINGS[(placing || moving).type];
       ctx.font = "bold 14px sans-serif";
       ctx.textAlign = "center";
       ctx.fillStyle = "rgba(10,20,35,0.75)";
-      const msg = `Placing ${def.icon} ${def.name} (${def.size.w}×${def.size.h}) — click ground to build · ESC or right-click to cancel`;
+      const verb = placing ? "Placing" : "Moving";
+      const msg = `${verb} ${def.icon} ${def.name} (${def.size.w}×${def.size.h}) — click ground to confirm · ESC or right-click to cancel`;
       const tw = ctx.measureText(msg).width + 16;
       roundRectBase(w / 2 - tw / 2, h - 64, tw, 26, 6); ctx.fill();
-      ctx.fillStyle = "#ffd700";
+      ctx.fillStyle = placing ? "#ffd700" : "#8ecbff";
       ctx.fillText(msg, w / 2, h - 46);
     }
 
@@ -932,10 +971,14 @@ const BaseView = (() => {
     }
   }
 
-  function drawGhost(bld, def, valid) {
+    function drawGhost(bld, def, valid, isMove) {
     const { base: bs, top } = boxCorners(bld, def);
-    const wall = valid ? "rgba(60,220,60,0.5)" : "rgba(220,60,60,0.5)";
-    const roof = valid ? "rgba(95,255,95,0.55)" : "rgba(255,95,95,0.55)";
+    const wall = isMove
+      ? (valid ? "rgba(80,160,255,0.5)" : "rgba(220,60,60,0.5)")
+      : (valid ? "rgba(60,220,60,0.5)" : "rgba(220,60,60,0.5)");
+    const roof = isMove
+      ? (valid ? "rgba(120,190,255,0.55)" : "rgba(255,95,95,0.55)")
+      : (valid ? "rgba(95,255,95,0.55)" : "rgba(255,95,95,0.55)");
     ctx.globalAlpha = 0.8;
     poly([bs[3], bs[2], top[2], top[3]], wall);
     poly([bs[1], bs[2], top[2], top[1]], wall);
