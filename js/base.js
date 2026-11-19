@@ -441,9 +441,9 @@ const BaseView = (() => {
   /* ---------- building sprite art (PNG overrides the procedural shapes).
      Drop images at these paths in the repo; missing art falls back to
      the drawn version automatically.                          ---------- */
-  const SPRITES = {
-    command_center: "img/command_center.png",
-oil_rig: { src: "img/oilpump.png", scale: 0.4, dy: 0 },
+    const SPRITES = {
+    command_center: "img/command_center.png?v=2",
+    oil_rig: { src: "img/oilpump.png?v=2", scale: 0.4, dy: 0 },
   };
   const spriteCache = {};
   function getSprite(type) {
