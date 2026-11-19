@@ -201,7 +201,7 @@ const Game = (() => {
     emit(); save();
     return true;
   }
-  }
+  
   function buildingAt(base, tx, ty) {
     return base.buildings.find(b => {
       const bd = BUILDINGS[b.type];
