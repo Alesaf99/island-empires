@@ -446,35 +446,41 @@ const BaseView = (() => {
     oil_rig: { src: "img/oilpump.png?v=2", scale: 0.4, dy: 0 },
   };
   const spriteCache = {};
+    function spriteConf(type) {
+    return typeof SPRITES[type] === "string" ? { src: SPRITES[type], scale: 1, dy: 0 } : SPRITES[type];
+  }
   function getSprite(type) {
     if (!(type in SPRITES)) return null;
     if (spriteCache[type] !== undefined) return spriteCache[type];
-    const entry = { img: new Image(), ready: false };
+    const conf = spriteConf(type);
+    const entry = { img: new Image(), ready: false, conf };
     spriteCache[type] = entry;
     entry.img.onload = () => { entry.ready = true; };
     entry.img.onerror = () => { spriteCache[type] = null; };
-    entry.img.src = SPRITES[type];
+    entry.img.src = conf.src;
     return entry;
   }
 
   /* draw a sprite: width fits the footprint diamond, bottom at the south corner */
-  function drawBuildingSprite(bld, def, img, bs) {
+    /* draw a sprite: width fits the footprint diamond x conf.scale,
+     bottom anchored at the south corner, shifted down by conf.dy */
+  function drawBuildingSprite(bld, def, img, bs, conf) {
     const cx = (bs[0].x + bs[2].x) / 2;
     const bottomY = Math.max(bs[0].y, bs[1].y, bs[2].y, bs[3].y);
-    const targetW = Math.abs(bs[1].x - bs[3].x);
-    const scale = targetW / img.width;
-    const drawH = img.height * scale;
-    ctx.drawImage(img, cx - targetW / 2, bottomY - drawH, targetW, drawH);
+    const targetW = Math.abs(bs[1].x - bs[3].x) * (conf.scale || 1);
+    const sc = targetW / img.width;
+    const drawH = img.height * sc;
+    ctx.drawImage(img, cx - targetW / 2, bottomY - drawH + (conf.dy || 0), targetW, drawH);
     // floating level tag above the sprite
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "center";
     const tag = `Lv ${bld.level}`;
     const tw = ctx.measureText(tag).width + 10;
-    roundRectBase(cx - tw / 2, bottomY - drawH - 18, tw, 16, 4);
+    roundRectBase(cx - tw / 2, bottomY - drawH + (conf.dy || 0) - 18, tw, 16, 4);
     ctx.fillStyle = "rgba(10,20,35,0.8)"; ctx.fill();
     ctx.fillStyle = "#ffd700";
     ctx.textBaseline = "middle";
-    ctx.fillText(tag, cx, bottomY - drawH - 10);
+    ctx.fillText(tag, cx, bottomY - drawH + (conf.dy || 0) - 10);
   }
   
   const STORIES = {
@@ -681,9 +687,9 @@ const BaseView = (() => {
           { x: bs[2].x + 5, y: bs[2].y + 3 }, { x: bs[3].x + 5, y: bs[3].y + 3 }], "rgba(0,0,0,0.18)");
 
         // sprite art: if this building has a PNG and construction is done, draw it instead
-    const spr = getSprite(bld.type);
+        const spr = getSprite(bld.type);
     if (spr && spr.ready && !underConstruction) {
-      drawBuildingSprite(bld, def, spr.img, bs);
+      drawBuildingSprite(bld, def, spr.img, bs, spr.conf);
       return;
     }
     
