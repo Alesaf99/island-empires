@@ -272,6 +272,9 @@ const BaseView = (() => {
       stats.push(`Status: <b>Operational</b>`);
     }
     stats.push(`Max level: ${def.maxLevel}`);
+    if (bld.type === "command_center") {
+      stats.push(`👷 Construction teams: <b>${bld.level}</b> (one per Command Center level)`);
+    }    
     document.getElementById("building-stats").innerHTML = stats.map(s => `<div>${s}</div>`).join("");
 
     const actions = document.getElementById("building-actions");
@@ -909,7 +912,8 @@ const BaseView = (() => {
   function renderQueue(b) {
     const q = document.getElementById("construction-queue");
     const t = Game.now();
-    let html = "";
+       const teamHeader = `<div class="queue-item">👷 Teams: ${Game.busyTeams(b)}/${Game.constructionTeams(b)}</div>`;
+    let html = teamHeader;
     b.buildings.filter(x => x.upgradeEndsAt && x.upgradeEndsAt > t).forEach(x => {
       const total = Game.buildingTime(x.type, x.upgradeTo || x.level);
       const left = x.upgradeEndsAt - t;
@@ -921,8 +925,7 @@ const BaseView = (() => {
       const left = tr.endsAt - t;
       html += `<div class="queue-item">${UNITS[tr.unit].icon} ×${tr.count} — ${fmtRemaining(left)}</div>`;
     });
-    if (!html) html = `<div class="queue-item">Click the ground to build. Drag to pan, scroll to zoom.</div>`;
-    q.innerHTML = html;
+   if (html === teamHeader) html += `<div class="queue-item">Click the ground to build. Drag to pan, scroll to zoom.</div>`;
   }
 
   function fmtRemaining(sec) {
