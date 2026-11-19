@@ -909,23 +909,46 @@ const BaseView = (() => {
     return isl ? isl.name : "Unknown";
   }
 
+  /* ---------- construction panel (bottom-left): all projects in progress ---------- */
   function renderQueue(b) {
     const q = document.getElementById("construction-queue");
     const t = Game.now();
-       const teamHeader = `<div class="queue-item">👷 Teams: ${Game.busyTeams(b)}/${Game.constructionTeams(b)}</div>`;
-    let html = teamHeader;
+    const busy = Game.busyTeams(b), teams = Game.constructionTeams(b);
+
+    let rows = "";
+
+    // building construction / upgrades
     b.buildings.filter(x => x.upgradeEndsAt && x.upgradeEndsAt > t).forEach(x => {
+      const def = BUILDINGS[x.type];
       const total = Game.buildingTime(x.type, x.upgradeTo || x.level);
       const left = x.upgradeEndsAt - t;
-      const pct = Math.min(100, ((total - left) / total) * 100);
-      const label = (x.upgradeTo || x.level) > x.level ? `→ Lv ${x.upgradeTo}` : "";
-      html += `<div class="queue-item">${BUILDINGS[x.type].icon} ${BUILDINGS[x.type].name} ${label} — ${fmtRemaining(left)}<div class="bar"><div class="fill" style="width:${pct}%"></div></div></div>`;
+      const pct = Math.min(100, Math.max(0, ((total - left) / total) * 100));
+      const label = (x.upgradeTo || x.level) > x.level ? `→ Lv ${x.upgradeTo}` : "new";
+      rows += `
+        <div class="queue-item">
+          <div class="qi-top">${def.icon} <b>${def.name}</b> <span class="qi-lvl">${label}</span> <span class="qi-time">${fmtRemaining(left)}</span></div>
+          <div class="bar"><div class="fill" style="width:${pct.toFixed(1)}%"></div></div>
+        </div>`;
     });
+
+    // unit training
     b.training.forEach(tr => {
-      const left = tr.endsAt - t;
-      html += `<div class="queue-item">${UNITS[tr.unit].icon} ×${tr.count} — ${fmtRemaining(left)}</div>`;
+      const u = UNITS[tr.unit];
+      const total = u.trainTime * tr.count;
+      const left = Math.max(0, tr.endsAt - t);
+      const pct = Math.min(100, Math.max(0, ((total - left) / total) * 100));
+      rows += `
+        <div class="queue-item">
+          <div class="qi-top">${u.icon} <b>${u.name}</b> <span class="qi-lvl">×${tr.count}</span> <span class="qi-time">${fmtRemaining(left)}</span></div>
+          <div class="bar"><div class="fill" style="width:${pct.toFixed(1)}%"></div></div>
+        </div>`;
     });
-   if (html === teamHeader) html += `<div class="queue-item">Click the ground to build. Drag to pan, scroll to zoom.</div>`;
+
+    if (!rows) rows = `<div class="queue-item qi-idle">No projects running — click the ground to build.</div>`;
+
+    q.innerHTML = `
+      <div class="q-title"><span>🏗️ Construction</span><span>👷 ${busy}/${teams}</span></div>
+      ${rows}`;
   }
 
   function fmtRemaining(sec) {
