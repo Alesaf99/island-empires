@@ -211,3 +211,19 @@ button.action:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .toast.error { border-color: #e57373; background: #4a1f1f; }
 @keyframes fadein { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; } }
+
+/* Production-per-hour panel (click the resource bar to toggle) */
+#resources { cursor: pointer; user-select: none; }
+#resources:hover { filter: brightness(1.2); }
+#prod-panel {
+  flex-basis: 100%;
+  background: #0f2233;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.85em;
+}
+#prod-panel.hidden { display: none; }
+#prod-panel .pp-row { display: flex; gap: 16px; font-weight: bold; }
+#prod-panel .pp-row span { white-space: nowrap; }
+#prod-panel .pp-detail { margin-top: 4px; opacity: 0.8; font-size: 0.92em; border-top: 1px dashed #2a3f55; padding-top: 4px; max-height: 140px; overflow-y: auto; }
