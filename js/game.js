@@ -251,6 +251,20 @@ const Game = (() => {
     const cc = base.buildings.find(x => x.type === "command_center");
     return cc ? cc.level : 1;
   }
+
+    /* Production totals per hour across all bases (skips buildings under construction) */
+  function productionPerHour() {
+    const out = { oil: 0, steel: 0, gold: 0 };
+    const t = now();
+    state.bases.forEach(b => b.buildings.forEach(x => {
+      const def = BUILDINGS[x.type];
+      if (!def.produces) return;
+      if (x.upgradeEndsAt && x.upgradeEndsAt > t) return;
+      for (const [r, amt] of Object.entries(def.produces)) out[r] += amt * x.level;
+    }));
+    return out;
+  }
+  
   /* Construction teams: one per Command Center level.
      Each team can run one construction or upgrade project at a time. */
   function constructionTeams(base) { return Math.max(1, ccOf(base)); }
@@ -832,7 +846,7 @@ const Game = (() => {
     islandAt, cellIsLand, distCells, fmtHours,
     buildingCost, buildingTime, canAfford, pay,
     canPlace, buildingAt,
-startBuild, upgradeBuild, ccOf, canTrain, trainUnits, constructionTeams, busyTeams,
+startBuild, upgradeBuild, ccOf, canTrain, trainUnits, constructionTeams, busyTeams, productionPerHour,
     sendArmy, recallArmy, garrisonPower, armyPower,
     canBuyLand, buyLand, now, BASE_SIZE,
     classOf, cargoSlots, transportCapacity, simulateBattle, estimatePower,
