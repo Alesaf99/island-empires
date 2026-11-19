@@ -443,7 +443,7 @@ const BaseView = (() => {
      the drawn version automatically.                          ---------- */
   const SPRITES = {
     command_center: "img/command_center.png",
-    oil_rig: "img/oilpump.png",
+    oil_rig: { src: "img/oilpump.png", scale: 0.4, dy: 0 },
   };
   const spriteCache = {};
   function getSprite(type) {
