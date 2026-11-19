@@ -29,6 +29,8 @@ const BaseView = (() => {
     window.addEventListener("resize", resize);
     resize();
     addGarrisonButton();
+    Object.keys(SPRITES).forEach(t => getSprite(t));
+
     // smooth 30fps loop, only while base view is visible (phone friendly)
     startAnimLoop();
   }
@@ -407,6 +409,44 @@ const BaseView = (() => {
 
   /* ---------- drawing helpers ---------- */
   /* how many stacked floors each building shows */
+  /* ---------- building sprite art (PNG overrides the procedural shapes).
+     Drop images at these paths in the repo; missing art falls back to
+     the drawn version automatically.                          ---------- */
+  const SPRITES = {
+    command_center: "img/command_center.png",
+  };
+  const spriteCache = {};
+  function getSprite(type) {
+    if (!(type in SPRITES)) return null;
+    if (spriteCache[type] !== undefined) return spriteCache[type];
+    const entry = { img: new Image(), ready: false };
+    spriteCache[type] = entry;
+    entry.img.onload = () => { entry.ready = true; };
+    entry.img.onerror = () => { spriteCache[type] = null; };
+    entry.img.src = SPRITES[type];
+    return entry;
+  }
+
+  /* draw a sprite: width fits the footprint diamond, bottom at the south corner */
+  function drawBuildingSprite(bld, def, img, bs) {
+    const cx = (bs[0].x + bs[2].x) / 2;
+    const bottomY = Math.max(bs[0].y, bs[1].y, bs[2].y, bs[3].y);
+    const targetW = Math.abs(bs[1].x - bs[3].x);
+    const scale = targetW / img.width;
+    const drawH = img.height * scale;
+    ctx.drawImage(img, cx - targetW / 2, bottomY - drawH, targetW, drawH);
+    // floating level tag above the sprite
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    const tag = `Lv ${bld.level}`;
+    const tw = ctx.measureText(tag).width + 10;
+    roundRectBase(cx - tw / 2, bottomY - drawH - 18, tw, 16, 4);
+    ctx.fillStyle = "rgba(10,20,35,0.8)"; ctx.fill();
+    ctx.fillStyle = "#ffd700";
+    ctx.textBaseline = "middle";
+    ctx.fillText(tag, cx, bottomY - drawH - 10);
+  }
+  
   const STORIES = {
     command_center: 2, barracks: 2, market: 2, comms_tower: 3,
     factory: 2, heavy_factory: 1, oil_rig: 1, steel_mill: 2, gold_mine: 1,
@@ -546,14 +586,19 @@ const BaseView = (() => {
     }
 
     // selected building outline
-    if (selected) {
+        if (selected) {
       const def = BUILDINGS[selected.type];
       const { base: bs, top } = boxCorners(selected, def);
       ctx.strokeStyle = "#ffd700";
       ctx.lineWidth = 3;
-      poly(top, null, "#ffd700");
-      poly([bs[1], bs[2], top[2], top[1]], null, "#ffd700");
-      poly([bs[3], bs[2], top[2], top[3]], null, "#ffd700");
+      const sprSel = getSprite(selected.type);
+      if (sprSel && sprSel.ready) {
+        poly(bs, null, "#ffd700");   // sprite buildings: outline the ground footprint
+      } else {
+        poly(top, null, "#ffd700");
+        poly([bs[1], bs[2], top[2], top[1]], null, "#ffd700");
+        poly([bs[3], bs[2], top[2], top[3]], null, "#ffd700");
+      }
       ctx.lineWidth = 1;
     }
 
@@ -595,6 +640,13 @@ const BaseView = (() => {
     poly([{ x: bs[0].x + 5, y: bs[0].y + 3 }, { x: bs[1].x + 5, y: bs[1].y + 3 },
           { x: bs[2].x + 5, y: bs[2].y + 3 }, { x: bs[3].x + 5, y: bs[3].y + 3 }], "rgba(0,0,0,0.18)");
 
+        // sprite art: if this building has a PNG and construction is done, draw it instead
+    const spr = getSprite(bld.type);
+    if (spr && spr.ready && !underConstruction) {
+      drawBuildingSprite(bld, def, spr.img, bs);
+      return;
+    }
+    
     // stacked stories: each floor is a slightly smaller box on top of the last
     const ccx = (bs[0].x + bs[2].x) / 2;
     const ccy = (bs[0].y + bs[2].y) / 2;
