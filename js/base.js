@@ -274,8 +274,8 @@ const BaseView = (() => {
       stats.push(`Status: <b>Operational</b>`);
     }
     stats.push(`Max level: ${def.maxLevel}`);
-    if (bld.type === "command_center") {
-      stats.push(`👷 Construction teams: <b>${bld.level}</b> (one per Command Center level)`);
+    if (bld.type === "_center") {
+      stats.push(`👷 Construction teams: <b>${bld.level}</b> (one per  Center level)`);
     }    
     document.getElementById("building-stats").innerHTML = stats.map(s => `<div>${s}</div>`).join("");
 
@@ -313,7 +313,7 @@ const BaseView = (() => {
     const b = base();
     const cc = Game.ccOf(b);
     document.getElementById("building-name").textContent = "🏗️ Construct Building";
-    document.getElementById("building-desc").textContent = `Choose a building, then click where to place it. Right-click or ESC cancels. Command Center level ${cc} allows buildings up to level ${cc + 1}.`;
+    document.getElementById("building-desc").textContent = `Choose a building, then click where to place it. Right-click or ESC cancels.  Center level ${cc} allows buildings up to level ${cc + 1}.`;
     document.getElementById("building-stats").innerHTML = "";
     const actions = document.getElementById("building-actions");
     actions.innerHTML = "";
@@ -414,6 +414,7 @@ const BaseView = (() => {
      the drawn version automatically.                          ---------- */
   const SPRITES = {
     command_center: "img/command_center.png",
+    oil_rig: "img/oilpump.png",
   };
   const spriteCache = {};
   function getSprite(type) {
