@@ -446,7 +446,7 @@ const BaseView = (() => {
     oil_rig: { src: "img/oilpump.png?v=2", scale: 0.65, dy: 0 },
     steel_mill: { src: "img/steelmill.png?v=2", scale: 1, dy: 0 },
     barracks: { src: "img/barracks.png?v=2", scale: 1.3, dy: 0 },
-    gold_mine: { src: "img/goldmine.png?v=2", scale: 0.95, dy: 0 },
+    gold_mine: { src: "img/goldmine.png?v=2", scale: 1.1, dy: 0 },
     radar_station: { src: "img/radar.png?v=2", scale: 1.3, dy: 0 },
   };
   const spriteCache = {};
