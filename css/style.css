@@ -88,16 +88,40 @@ canvas { display: block; width: 100%; height: 100%; }
   border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 8px 12px;
-  min-height: 44px;
+  min-width: 240px;
+  max-width: 320px;
   display: flex;
-  gap: 10px;
-  align-items: center;
-  max-width: 60%;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
 }
-.queue-item { font-size: 0.85em; background: #1d3348; padding: 4px 8px; border-radius: 6px; }
+.q-title {
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+  font-size: 0.85em;
+  color: #cfe2f3;
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 4px;
+}
+.queue-item {
+  background: #1d3348;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 0.83em;
+}
+.queue-item .qi-top {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.queue-item .qi-lvl { color: #9fd67f; font-weight: bold; margin-left: auto; }
+.queue-item .qi-time { color: var(--accent); font-weight: bold; }
+.queue-item.qi-idle { opacity: 0.6; }
 .queue-item .bar { height: 4px; background: #0a141f; border-radius: 2px; margin-top: 4px; }
-.queue-item .bar .fill { height: 100%; background: var(--accent); border-radius: 2px; }
+.queue-item .bar .fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.5s linear; }
 
 #selected-grid-info {
   background: rgba(22, 40, 58, 0.92);
