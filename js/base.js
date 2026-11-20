@@ -442,7 +442,7 @@ const BaseView = (() => {
      Drop images at these paths in the repo; missing art falls back to
      the drawn version automatically.                          ---------- */
     const SPRITES = {
-    command_center: "img/command_center.png?v=2",
+    command_center: { src: "img/command_center.png?v=2", scale: 0.7, dy: 0 },
     oil_rig: { src: "img/oilpump.png?v=2", scale: 0.65, dy: 0 },
     steel_mill: { src: "img/steelmill.png?v=2", scale: 1, dy: 0 },
     barracks: { src: "img/barracks.png?v=2", scale: 1.3, dy: 0 },
