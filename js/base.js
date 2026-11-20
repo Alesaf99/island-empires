@@ -31,6 +31,8 @@ const BaseView = (() => {
     resize();
     addGarrisonButton();
     Object.keys(SPRITES).forEach(t => getSprite(t));
+    getGroundImage();
+
 
     // smooth 30fps loop, only while base view is visible (phone friendly)
     startAnimLoop();
@@ -525,6 +527,37 @@ const BaseView = (() => {
     grassTexture = cv;
   }
 
+  const GROUND_SRC = "img/Desert_BG_2 - dark.png?v=3";
+  const GROUND_TEX_RES = 256;
+  let groundImgEntry = null;
+  let pngGround = null;
+  function getGroundImage() {
+    if (groundImgEntry === null) {
+      const entry = { img: new Image(), ready: false };
+      groundImgEntry = entry;
+      entry.img.onload = () => { entry.ready = true; pngGround = null; };
+      entry.img.onerror = () => { groundImgEntry = false; };
+      entry.img.src = GROUND_SRC;
+    }
+    return groundImgEntry || null;
+  }
+  function groundTexture(N) {
+    const entry = getGroundImage();
+    if (entry && entry.ready) {
+      if (!pngGround) {
+        const cv = document.createElement("canvas");
+        cv.width = GROUND_TEX_RES; cv.height = GROUND_TEX_RES;
+        const g = cv.getContext("2d");
+        g.imageSmoothingEnabled = true;
+        g.drawImage(entry.img, 0, 0, GROUND_TEX_RES, GROUND_TEX_RES);
+        pngGround = cv;
+      }
+      return { cv: pngGround, smooth: true };
+    }
+    ensureGrassTexture(N);
+    return { cv: grassTexture, smooth: false };
+  }
+  
   function shade(hex, f) {
     const n = parseInt(hex.slice(1), 16);
     const r = Math.max(0, Math.min(255, ((n >> 16) & 255) * f));
@@ -580,14 +613,14 @@ const BaseView = (() => {
     poly([c0, c1, c2, c3], null, "#c2a878");
     ctx.lineWidth = 1;
 
-       // pixel-art grass: pre-rendered low-res texture, 1 chunky pixel per tile,
-    // blitted through the isometric transform with smoothing off (crisp pixels)
-    ensureGrassTexture(N);
+           // ground texture: PNG from img/ when loaded, procedural grass as fallback,
+    // blitted through the isometric transform
+    const gt = groundTexture(N);
     ctx.save();
     const kk0 = k();
     ctx.transform(kk0, kk0 * Y_SCALE, -kk0, kk0 * Y_SCALE, cam.x, cam.y);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(grassTexture, 0, 0, N, N);
+    ctx.imageSmoothingEnabled = gt.smooth;
+    ctx.drawImage(gt.cv, 0, 0, N, N);
     ctx.restore();
     ctx.imageSmoothingEnabled = true;
     
