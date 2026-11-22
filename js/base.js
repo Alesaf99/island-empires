@@ -528,7 +528,7 @@ const BaseView = (() => {
   }
 
   const GROUND_SRC = "img/Desert_BG_2 - dark.png?v=3";
-  const GROUND_TEX_RES = 256;
+  const GROUND_TEX_RES = 1024;
   let groundImgEntry = null;
   let pngGround = null;
   function getGroundImage() {
@@ -552,10 +552,10 @@ const BaseView = (() => {
         g.drawImage(entry.img, 0, 0, GROUND_TEX_RES, GROUND_TEX_RES);
         pngGround = cv;
       }
-      return { cv: pngGround, smooth: true };
+      return { cv: pngGround, screen: true };
     }
     ensureGrassTexture(N);
-    return { cv: grassTexture, smooth: false };
+    return { cv: grassTexture, screen: false };
   }
   
   function shade(hex, f) {
@@ -615,12 +615,22 @@ const BaseView = (() => {
 
            // ground texture: PNG from img/ when loaded, procedural grass as fallback,
     // blitted through the isometric transform
-    const gt = groundTexture(N);
+        const gt = groundTexture(N);
     ctx.save();
-    const kk0 = k();
-    ctx.transform(kk0, kk0 * Y_SCALE, -kk0, kk0 * Y_SCALE, cam.x, cam.y);
-    ctx.imageSmoothingEnabled = gt.smooth;
-    ctx.drawImage(gt.cv, 0, 0, N, N);
+    if (gt.screen) {
+      // the PNG's opaque area is a diamond touching the image edges; map the
+      // image square so its edge midpoints land on the island diamond corners
+      const A = proj(0, 0), B = proj(N, 0), C = proj(N, N), D = proj(0, N);
+      const Ox = (A.x + C.x) / 2, Oy = (A.y + C.y) / 2;
+      ctx.transform(B.x - D.x, B.y - D.y, C.x - A.x, C.y - A.y, A.x + D.x - Ox, A.y + D.y - Oy);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(gt.cv, 0, 0, 1, 1);
+    } else {
+      const kk0 = k();
+      ctx.transform(kk0, kk0 * Y_SCALE, -kk0, kk0 * Y_SCALE, cam.x, cam.y);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(gt.cv, 0, 0, N, N);
+    }
     ctx.restore();
     ctx.imageSmoothingEnabled = true;
     
