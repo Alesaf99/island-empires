@@ -451,6 +451,8 @@ const BaseView = (() => {
     gold_mine: { src: "img/goldmine.png?v=2", scale: 1.1, dy: 0 },
     radar_station: { src: "img/radar.png?v=2", scale: 1.3, dy: 0 },
     factory: { src: "img/factory.png?v=2", scale: 1.6, dy: 0 },
+    heavy_factory: { src: "img/heavy_factory.png?v=2", scale: 1.6, dy: 0 },
+      
   };
   const spriteCache = {};
     function spriteConf(type) {
