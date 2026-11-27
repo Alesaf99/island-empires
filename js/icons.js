@@ -64,7 +64,53 @@ const Icons = (() => {
     });
   }
   
-
+  /* ---- JAS 39 Gripen: close-coupled canards + clipped delta wing, single engine ---- */
+  function gripen(ctx, cx, cy, size, heading, fill, stroke) {
+    size_hint = size;
+    frame(ctx, cx, cy, size, heading, s => {
+      ctx.beginPath();
+      ctx.moveTo(s, 0);                        // pointed nose
+      ctx.lineTo(s * 0.55, s * 0.07);          // fuselage side
+      ctx.lineTo(s * 0.44, s * 0.11);          // canard root leading edge
+      ctx.lineTo(s * 0.50, s * 0.42);          // starboard canard tip
+      ctx.lineTo(s * 0.30, s * 0.36);          // canard root trailing edge
+      ctx.lineTo(s * 0.02, s * 0.32);          // wing root leading edge
+      ctx.lineTo(-s * 0.55, s * 0.95);         // starboard wingtip (clipped delta)
+      ctx.lineTo(-s * 0.82, s * 0.60);         // trailing edge
+      ctx.lineTo(-s * 0.88, s * 0.20);         // tail
+      ctx.lineTo(-s * 0.98, 0);                // rear center
+      ctx.lineTo(-s * 0.88, -s * 0.20);
+      ctx.lineTo(-s * 0.82, -s * 0.60);
+      ctx.lineTo(-s * 0.55, -s * 0.95);
+      ctx.lineTo(s * 0.02, -s * 0.32);
+      ctx.lineTo(s * 0.30, -s * 0.36);
+      ctx.lineTo(s * 0.50, -s * 0.42);
+      ctx.lineTo(s * 0.44, -s * 0.11);
+      ctx.lineTo(s * 0.55, -s * 0.07);
+      ctx.closePath();
+      strokeFill(ctx, fill, stroke);
+      // canards slightly darker than the wing
+      ctx.fillStyle = shadeLocal(fill, 0.75);
+      ctx.beginPath();
+      ctx.moveTo(s * 0.44, s * 0.11); ctx.lineTo(s * 0.50, s * 0.42); ctx.lineTo(s * 0.30, s * 0.36);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(s * 0.44, -s * 0.11); ctx.lineTo(s * 0.50, -s * 0.42); ctx.lineTo(s * 0.30, -s * 0.36);
+      ctx.closePath(); ctx.fill();
+      // single engine nozzle
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(-s * 0.98, -s * 0.09, s * 0.16, s * 0.18);
+      // cockpit canopy
+      ctx.beginPath();
+      ctx.moveTo(s * 0.78, 0);
+      ctx.lineTo(s * 0.38, s * 0.08);
+      ctx.lineTo(s * 0.24, 0);
+      ctx.lineTo(s * 0.38, -s * 0.08);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(140,200,255,0.9)";
+      ctx.fill();
+    });
+  }
   /* ---- bomber: wide straight wings, long fuselage ---- */
   function bomber(ctx, cx, cy, size, heading, fill, stroke) {
     size_hint = size;
@@ -384,8 +430,10 @@ const Icons = (() => {
   };
 
   /* Specific unit keys that get their own icon (override their class default) */
-  const KEY_ICONS = {
+    const KEY_ICONS = {
     at_soldier: atSoldier,
+    jas39: gripen,
+
   };
 
   /* Pick the dominant unit class in an army (by count, vehicles weigh more) */
