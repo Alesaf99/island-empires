@@ -141,7 +141,7 @@ const UNITS = {
   abrams:     { name: "M1 Abrams",  icon: "⚙️", cls: "ground_veh", domain: "ground", hp: 1900, dmg: { inf: 900, gveh: 1100 },  stealth: false, speed: 20, price: 4000, trainTime: 240, requires: { heavy_factory: 1 } },
 
   /* ---- Fighter jets (Airfield) — ONLY hit jets, bombers, helicopters ---- */
-  jas39:  { name: "JAS 39 Gripen", icon: "✈️", cls: "jet", domain: "air", hp: 3000, dmg: { air: 5200 }, stealth: false, speed: 301, price: 24000, trainTime: 600, requires: { airfield: 2 } },
+  jas39:  { name: "JAS 39 Gripen", icon: "🇸🇪", cls: "jet", domain: "air", hp: 3000, dmg: { air: 5200 }, stealth: false, speed: 301, price: 24000, trainTime: 600, requires: { airfield: 2 } },
   f16:    { name: "F-16",          icon: "✈️", cls: "jet", domain: "air", hp: 3000, dmg: { air: 5000 }, stealth: false, speed: 310, price: 21000, trainTime: 600, requires: { airfield: 2 } },
   mig29:  { name: "MiG-29",       icon: "✈️", cls: "jet", domain: "air", hp: 4300, dmg: { air: 4700 }, stealth: false, speed: 360, price: 19000, trainTime: 600, requires: { airfield: 2 } },
   viggen: { name: "JA 37 Viggen", icon: "✈️", cls: "jet", domain: "air", hp: 4800, dmg: { air: 4500 }, stealth: false, speed: 410, price: 17500, trainTime: 600, requires: { airfield: 2 } },
